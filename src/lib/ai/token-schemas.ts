@@ -3,6 +3,7 @@ import { makeRamp } from "../tokens/color";
 import { blankTokenSet, nearestStep } from "../tokens/defaults";
 import {
   DimensionSchema,
+  MotionSchema,
   FontSchema,
   SemanticSchema,
   ShadowSchema,
@@ -41,6 +42,7 @@ const groupShapes = {
   radius: { radius: z.array(DimensionSchema).min(2).max(12) },
   shadows: { shadows: z.array(ShadowSchema).min(1).max(10) },
   breakpoints: { breakpoints: z.array(DimensionSchema).min(2).max(8) },
+  motion: { motion: MotionSchema },
 } as const;
 
 /** Semantic references must point at ramps that exist and steps the ramp has. */
@@ -85,8 +87,9 @@ export function generationSchema(steps: StepSet) {
       ...groupShapes.radius,
       ...groupShapes.shadows,
       ...groupShapes.breakpoints,
+      ...groupShapes.motion,
     })
-    .partial({ ramps: true, semantic: true, fonts: true, typeScale: true, spacing: true, radius: true, shadows: true, breakpoints: true, summary: true })
+    .partial({ ramps: true, semantic: true, fonts: true, typeScale: true, spacing: true, radius: true, shadows: true, breakpoints: true, motion: true, summary: true })
     .superRefine((v, ctx) => checkRefs(v.semantic, (v.ramps ?? []).map((r) => r.name), steps, ctx));
 }
 export type Generation = z.infer<ReturnType<typeof generationSchema>>;
@@ -116,6 +119,7 @@ export function buildTokenSet(gen: GroupResult, settings: Pick<SystemSettings, "
   if (gen.radius?.length) out.radius = gen.radius;
   if (gen.shadows?.length) out.shadows = gen.shadows;
   if (gen.breakpoints?.length) out.breakpoints = gen.breakpoints;
+  if (gen.motion && (gen.motion.durations.length || gen.motion.easings.length)) out.motion = gen.motion;
   // Starter semantics reference neutral/brand; if the model renamed ramps, those refs would dangle.
   if (!gen.semantic?.length && gen.ramps?.length) {
     const names = new Set(out.ramps.map((r) => r.name));

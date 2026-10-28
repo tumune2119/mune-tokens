@@ -84,6 +84,16 @@ CREATE TABLE IF NOT EXISTS components (
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS components_system_idx ON components(system_id);
+CREATE TABLE IF NOT EXISTS system_versions (
+  id TEXT PRIMARY KEY,
+  system_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  settings_json TEXT NOT NULL,
+  tokens_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS system_versions_idx ON system_versions(system_id, version);
 `;
 
 function open(): DB {

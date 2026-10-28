@@ -2,6 +2,7 @@ import { generateRamp, makeRamp } from "./color";
 import {
   STEP_SETS,
   type Dimension,
+  type Motion,
   type FontToken,
   type Ramp,
   type SemanticToken,
@@ -87,6 +88,22 @@ export const DEFAULT_SHADOWS: ShadowToken[] = [
   { name: "xl", layers: [{ x: 0, y: 8, blur: 8, spread: -4, color: "#0000000a" }, { x: 0, y: 20, blur: 24, spread: -4, color: "#00000024" }] },
 ];
 
+export const DEFAULT_MOTION: Motion = {
+  durations: [
+    { name: "instant", value: 0 },
+    { name: "fast", value: 120 },
+    { name: "base", value: 200 },
+    { name: "slow", value: 320 },
+    { name: "slower", value: 480 },
+  ],
+  easings: [
+    { name: "standard", value: [0.2, 0, 0, 1] },
+    { name: "decelerate", value: [0, 0, 0.2, 1] },
+    { name: "accelerate", value: [0.4, 0, 1, 1] },
+    { name: "emphasized", value: [0.3, 0, 0, 1.2] },
+  ],
+};
+
 export function defaultRamps(steps: StepSet): Ramp[] {
   const list = STEP_SETS[steps];
   return [makeRamp("neutral", "#737373", list), makeRamp("brand", "#2563eb", list)];
@@ -103,10 +120,16 @@ export function blankTokenSet(settings: Pick<SystemSettings, "steps">): TokenSet
     radius: structuredClone(DEFAULT_RADIUS),
     shadows: structuredClone(DEFAULT_SHADOWS),
     breakpoints: structuredClone(DEFAULT_BREAKPOINTS),
+    motion: structuredClone(DEFAULT_MOTION),
+    brands: [],
   };
 }
 
 /** Rebuilds every ramp's steps for a different step set (keeps bases). */
 export function restep(ramps: Ramp[], steps: StepSet): Ramp[] {
   return ramps.map((r) => ({ ...r, steps: generateRamp(r.base, STEP_SETS[steps]) }));
+}
+
+export function restepSet(set: TokenSet, steps: StepSet): TokenSet {
+  return { ...set, ramps: restep(set.ramps, steps), brands: set.brands.map((b) => ({ ...b, ramps: restep(b.ramps, steps) })) };
 }

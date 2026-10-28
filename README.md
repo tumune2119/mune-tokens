@@ -18,6 +18,20 @@ AI is always optional: you can start blank or import a tokens JSON instead. Ever
 
 The model picks only a **base colour** for each ramp. The app then builds the steps in OKLCH so they look evenly spaced, which keeps output short and cheap.
 
+You can attach images and PDFs to the brief: a logo, screenshots or brand guidelines (up to 6). Claude takes the brand colours and the type and mood from them. Large images are scaled down to 1568px first. The component planner accepts screenshots and PRD PDFs the same way. Attachments work with both the API key and the CLI.
+
+## Tokens
+
+Each system has these token groups:
+
+- colour ramps, plus semantic colours with Light and Dark values
+- typography
+- spacing, radius, shadows and breakpoints
+- **motion:** durations and cubic-bezier easings
+- **brands:** alternative brands that swap some ramps (for example a sub-brand's colour) and share everything else
+
+Every save keeps a snapshot. **Version history** (the clock button in the system header) shows a token-by-token diff against your draft and can restore any earlier version into the draft.
+
 ## Components
 
 In a saved system, open the **Components** tab and choose **Plan from project idea**. Describe the product (you can attach a PRD, user flows or a MUNE TASKS plan). Claude then lists the components it needs, grouped as foundations, primitives, composites and product-specific. Each item shows why it's needed, its variants and states, and an estimated cost. Untick what you don't want, then add the rest to the library.
@@ -55,8 +69,23 @@ The plugin creates the following, and running it again updates everything in pla
 - **Primitives** (hidden from pickers), **Semantic** (Light and Dark modes, aliasing the primitives) and **Dimensions** (space, radius, breakpoints) variable collections.
 - Text styles and effect styles.
 - A component set per Ready component on a **MUNE Components** page. Fills, strokes, padding, gap, radius and size are bound to the variables, and text and shadows use the styles.
+- With brands: Primitives gets one mode per brand. Motion becomes `motion/duration/*` (number) and `motion/easing/*` (text) variables.
+- A **MUNE Design System** page that documents the whole system:
+  - primitives for each brand
+  - semantic colours in Light and Dark side by side
+  - type samples, spacing, radius, motion and shadows
+  - one instance of each component
+
+  Everything on it is bound to the file's variables and styles.
 
 If the plugin can't reach the app, choose `tokens.json` in the plugin instead. That imports variables and styles only. If your Figma plan allows only one mode per collection, Dark values go into a separate "Semantic (Dark)" collection.
+
+**Round trip.** To bring Figma changes back into the app:
+
+1. In the plugin, use **Export from Figma**. It saves the file's variables and styles as tokens JSON.
+2. In the app, use **⋯ → Import from Figma / JSON…**. You see a token-level diff before anything is applied.
+
+Figma doesn't store which background a text colour is meant to sit on, so re-check those pairings after an import.
 
 For pixel-exact reference frames, use **Open in browser** on any export page and capture it with html.to.design. Capture each mode separately.
 
@@ -71,6 +100,8 @@ To type-check the plugin: `npx tsc -p figma-plugin`.
 | `Ctrl S` | Save system |
 | `G` | Regenerate the current group with AI |
 | `O` | Open the current group's export page in the browser |
+| `J` / `K` (or `↓` / `↑`) | Move between tokens in the current tab |
+| `E` | Edit the focused token |
 | `Ctrl Enter` | Generate (on the brief) |
 | `Esc` | Cancel generation / close dialog |
 

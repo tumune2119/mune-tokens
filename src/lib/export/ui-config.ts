@@ -1,6 +1,6 @@
 import { oklchLabel, resolveRef } from "../tokens/color";
 import { cssVar, hexSchema, modesOf, type SystemSettings, type TokenSet } from "../tokens/schema";
-import { fontStack, shadowCss } from "./css";
+import { bezier, fontStack, shadowCss } from "./css";
 import type { ComponentSpec } from "../components/schema";
 
 export interface UiConfigMeta {
@@ -112,6 +112,29 @@ export function toUiConfig(set: TokenSet, meta: UiConfigMeta): string {
     out.push(table(["Token", "CSS", "CSS var"], set.shadows.map((s) => [code(`shadow/${s.name}`), code(shadowCss(s)), code(cssVar(`shadow/${s.name}`))])));
   }
   dims("Breakpoints", "breakpoint", set.breakpoints);
+  if (set.motion.durations.length || set.motion.easings.length) {
+    out.push("", "## Motion");
+    out.push(
+      table(
+        ["Token", "Value", "CSS var"],
+        [
+          ...set.motion.durations.map((d) => [code(`motion/duration/${d.name}`), `${d.value}ms`, code(cssVar(`motion/duration/${d.name}`))]),
+          ...set.motion.easings.map((e) => [code(`motion/easing/${e.name}`), code(bezier(e.value)), code(cssVar(`motion/easing/${e.name}`))]),
+        ],
+      ),
+    );
+    if (rules) out.push("", "Respect `prefers-reduced-motion`: drop transforms and use the instant/fast durations.");
+  }
+  if (set.brands.length) {
+    out.push("", "## Brands");
+    out.push(`Default brand plus ${set.brands.map((b) => code(b.name)).join(", ")}. Switch with \`data-brand="<name>"\` on <html>; semantic tokens stay the same, only these primitives change. In Figma: modes of the Primitives collection.`);
+    out.push(
+      table(
+        ["Brand", "Ramp", "Base"],
+        set.brands.flatMap((b) => (b.ramps.length ? b.ramps.map((r) => [code(b.name), code(r.name), r.base]) : [[code(b.name), "(no overrides)", ""]])),
+      ),
+    );
+  }
 
   if (rules && meta.components?.length) {
     out.push("", "## Components", "Build these exactly: same names, parts, variants, states and token bindings as the Figma components.");
@@ -324,6 +347,33 @@ export function applyUiConfig(base: TokenSet, md: string, settings: SystemSettin
   dims("spacing", "spacing");
   dims("radius", "radius");
   dims("breakpoints", "breakpoints");
+
+  const motion = secs.get("motion");
+  if (motion) {
+    for (const r of rows(motion)) {
+      const [, kind, name] = strip(r[0] ?? "").split("/");
+      if (!name) continue;
+      if (kind === "duration") {
+        const value = num(r[1] ?? "");
+        const d = set.motion.durations.find((x) => x.name === name);
+        if (value === null) continue;
+        if (!d) set.motion.durations.push({ name, value });
+        else if (d.value === value) continue;
+        else d.value = value;
+        changes++;
+      } else if (kind === "easing") {
+        const m = strip(r[1] ?? "").match(/cubic-bezier\(([^)]+)\)/);
+        const v = m?.[1].split(",").map((x) => Number(x.trim()));
+        if (!v || v.length !== 4 || v.some((x) => !Number.isFinite(x))) continue;
+        const value = v as [number, number, number, number];
+        const e = set.motion.easings.find((x) => x.name === name);
+        if (!e) set.motion.easings.push({ name, value });
+        else if (e.value.join() === value.join()) continue;
+        else e.value = value;
+        changes++;
+      }
+    }
+  }
 
   return { set, changes };
 }

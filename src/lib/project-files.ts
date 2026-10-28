@@ -58,6 +58,12 @@ export async function exportPagesFor(rec: SystemRecord, components: ComponentSpe
       out[`${page}-${mode}.html`] = renderExportPage(rec.tokens, page, mode, { name: rec.name, version: rec.version, settings: rec.settings, fontLinks, components });
     }
   }
+  // Brands only change colours: one extra Colours page per brand and mode.
+  for (const b of rec.tokens.brands) {
+    for (const mode of modesOf(rec.settings)) {
+      out[`colors-${mode}-${b.name}.html`] = renderExportPage(rec.tokens, "colors", mode, { name: rec.name, version: rec.version, settings: rec.settings, fontLinks, brand: b.name });
+    }
+  }
   return out;
 }
 

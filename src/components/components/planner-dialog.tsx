@@ -15,6 +15,8 @@ import { LEVELS, LEVEL_LABELS, type InventoryItem, type Level } from "@/lib/comp
 import { formatUsd } from "@/lib/format";
 import type { UsageInfo } from "@/lib/ai/events";
 import type { BriefFile } from "@/lib/types";
+import type { MediaPart } from "@/lib/ai/types";
+import { MEDIA_ACCEPT, isMediaFile, readMedia } from "@/lib/client/media";
 
 type Row = InventoryItem & { key: number; on: boolean };
 
@@ -38,6 +40,7 @@ export function PlannerDialog({
 }) {
   const [idea, setIdea] = useState("");
   const [files, setFiles] = useState<BriefFile[]>([]);
+  const [media, setMedia] = useState<MediaPart[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState(false);
   const [streamed, setStreamed] = useState("");
@@ -71,7 +74,7 @@ export function PlannerDialog({
     try {
       const { data, usage } = await streamAi<{ items: InventoryItem[] }>(
         `/api/systems/${systemId}/components/inventory`,
-        { idea, files },
+        { idea, files, media },
         { onText: (d) => setStreamed((s) => s + d), onRetry: () => setStreamed("") },
         ctrl.signal,
       );
@@ -90,6 +93,15 @@ export function PlannerDialog({
     if (!list) return;
     const added: BriefFile[] = [];
     for (const f of Array.from(list)) {
+      if (isMediaFile(f.name)) {
+        try {
+          const part = await readMedia(f);
+          setMedia((prev) => [...prev, part].slice(0, 6));
+        } catch (err) {
+          toast.error((err as Error).message);
+        }
+        continue;
+      }
       if (!/\.(md|txt|json|csv)$/i.test(f.name)) {
         toast(`${f.name}: attach text files (.md, .txt, .json, .csv) — e.g. a PRD, user flows or a MUNE TASKS plan.`);
         continue;
@@ -144,9 +156,17 @@ export function PlannerDialog({
           />
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="ghost" onClick={() => fileInput.current?.click()} disabled={busy}>
-              <Paperclip /> PRD, flows, sitemap…
+              <Paperclip /> PRD, flows, screenshots…
             </Button>
-            <input ref={fileInput} type="file" multiple hidden accept=".md,.txt,.json,.csv" onChange={(e) => (addFiles(e.target.files), (e.target.value = ""))} />
+            <input ref={fileInput} type="file" multiple hidden accept={`.md,.txt,.json,.csv,${MEDIA_ACCEPT}`} onChange={(e) => (addFiles(e.target.files), (e.target.value = ""))} />
+            {media.map((m, i) => (
+              <span key={`m${i}`} className="flex items-center gap-1 rounded-md bg-surface-2 px-2 py-1 font-mono text-[0.7rem]">
+                {m.mediaType === "application/pdf" ? "PDF" : "IMG"} {m.name}
+                <button aria-label={`Remove ${m.name}`} onClick={() => setMedia(media.filter((_, j) => j !== i))}>
+                  <X className="size-3" />
+                </button>
+              </span>
+            ))}
             {files.map((f, i) => (
               <span key={i} className="flex items-center gap-1 rounded-md bg-surface-2 px-2 py-1 font-mono text-[0.7rem]">
                 {f.name}

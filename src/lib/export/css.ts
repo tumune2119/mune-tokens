@@ -74,8 +74,9 @@ export function toTokensCss(set: TokenSet, meta: CssMeta): string {
     lines.push("", "  /* Shadows */", ...set.shadows.map((s) => `  ${cssVar(`shadow/${s.name}`)}: ${shadowCss(s)};`));
   }
   dims("Breakpoints (for reference; CSS can't use variables in media queries)", "breakpoint", set.breakpoints);
+  if (set.motion.durations.length || set.motion.easings.length) lines.push("", "  /* Motion */", ...motionLines(set));
 
-  return `${header(meta, "tokens.css")}\n:root {\n${lines.join("\n")}\n}\n\n/* Semantic colours */\n${modeBlocks(set, meta.settings)}`;
+  return `${header(meta, "tokens.css")}\n:root {\n${lines.join("\n")}\n}\n${brandBlocks(set)}\n/* Semantic colours */\n${modeBlocks(set, meta.settings)}`;
 }
 
 /** Tailwind v4: import after tailwindcss. Utilities like bg-bg-default, text-text-muted, p-4, rounded-md, shadow-md. */
@@ -102,12 +103,38 @@ export function toTailwindCss(set: TokenSet, meta: CssMeta): string {
   if (set.radius.length) theme.push("", ...set.radius.map((d) => `  ${cssVar(`radius/${d.name}`)}: ${d.value}px;`));
   if (set.shadows.length) theme.push("", ...set.shadows.map((s) => `  ${cssVar(`shadow/${s.name}`)}: ${shadowCss(s)};`));
   if (set.breakpoints.length) theme.push("", ...set.breakpoints.map((d) => `  ${cssVar(`breakpoint/${d.name}`)}: ${d.value}px;`));
+  // Tailwind's ease-* utilities read --ease-*; durations stay plain variables: duration-(--motion-duration-fast).
+  if (set.motion.easings.length) theme.push("", ...set.motion.easings.map((e) => `  --ease-${e.name}: ${bezier(e.value)};`));
 
   let out = `${header(meta, "tailwind.css")}/* Usage: @import "tailwindcss"; @import "./tailwind.css"; */\n\n`;
   if (modes.length > 1) out += `@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));\n\n`;
   out += `@theme {\n${theme.join("\n")}\n}\n`;
+  if (set.motion.durations.length) out += `\n:root {\n${set.motion.durations.map((d) => `  ${cssVar(`motion/duration/${d.name}`)}: ${d.value}ms;`).join("\n")}\n}\n`;
+  out += brandBlocks(set);
   if (modes.length > 1) {
     out += `\n[data-theme="dark"] {\n  color-scheme: dark;\n${semanticLines(set, "dark").join("\n")}\n}\n`;
   }
   return out;
+}
+
+export function bezier(v: readonly number[]) {
+  return `cubic-bezier(${v.join(", ")})`;
+}
+
+function motionLines(set: TokenSet) {
+  return [
+    ...set.motion.durations.map((d) => `  ${cssVar(`motion/duration/${d.name}`)}: ${d.value}ms;`),
+    ...set.motion.easings.map((e) => `  ${cssVar(`motion/easing/${e.name}`)}: ${bezier(e.value)};`),
+  ];
+}
+
+/** Each extra brand overrides its ramps' primitives: <html data-brand="name">. */
+function brandBlocks(set: TokenSet) {
+  return set.brands
+    .filter((b) => b.ramps.length)
+    .map((b) => {
+      const lines = b.ramps.flatMap((r) => Object.entries(r.steps).map(([step, hex]) => `  ${cssVar(`color/${r.name}/${step}`)}: ${cssColor(hex)};`));
+      return `\n[data-brand="${b.name}"] {\n${lines.join("\n")}\n}\n`;
+    })
+    .join("");
 }

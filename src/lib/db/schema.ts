@@ -80,3 +80,14 @@ export const components = sqliteTable("components", {
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
+
+/** A snapshot of a system at each save, for history, diffs and restore. */
+export const systemVersions = sqliteTable("system_versions", {
+  id: text("id").primaryKey(),
+  systemId: text("system_id").notNull(),
+  version: integer("version").notNull(),
+  name: text("name").notNull(),
+  settings: text("settings_json").notNull(),
+  tokens: text("tokens_json").notNull(),
+  createdAt: integer("created_at").notNull(),
+});

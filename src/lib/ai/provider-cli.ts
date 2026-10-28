@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { nanoid } from "nanoid";
 import { estimateCostUsd } from "./pricing";
-import { ZERO_USAGE, type CompletionRequest, type CompletionResult, type TokenUsage } from "./types";
+import { ZERO_USAGE, contentBlocks, type CompletionRequest, type CompletionResult, type TokenUsage } from "./types";
 
 let cached: { at: number; key: string; path: string | null } | null = null;
 
@@ -105,6 +105,8 @@ export async function completeWithCli(req: CompletionRequest, cliPath: string): 
     "--setting-sources",
     "",
     "--no-session-persistence",
+    // Images/PDFs travel as content blocks: one stream-json user message instead of plain text.
+    ...(req.media?.length ? ["--input-format", "stream-json"] : []),
   ];
 
   const isShim = /\.(cmd|bat)$/i.test(cliPath);
@@ -165,7 +167,10 @@ export async function completeWithCli(req: CompletionRequest, cliPath: string): 
   });
 
   child.stdin.on("error", () => {}); // process may exit before reading everything
-  child.stdin.end(req.user, "utf8");
+  const input = req.media?.length
+    ? JSON.stringify({ type: "user", message: { role: "user", content: contentBlocks(req.user, req.media) } }) + "\n"
+    : req.user;
+  child.stdin.end(input, "utf8");
 
   const code = await new Promise<number | null>((resolve, reject) => {
     child.on("error", reject);

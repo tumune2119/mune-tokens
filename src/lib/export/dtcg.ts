@@ -43,7 +43,8 @@ export function toDtcg(set: TokenSet, meta: DtcgMeta): Json {
         name: meta.name,
         version: meta.version,
         modes,
-        collections: { Primitives: { modes: ["Value"] }, Semantic: { modes } },
+        collections: { Primitives: { modes: set.brands.length ? ["default", ...set.brands.map((b) => b.name)] : ["Value"] }, Semantic: { modes } },
+        ...(set.brands.length ? { brands: ["default", ...set.brands.map((b) => b.name)] } : {}),
         contrast: meta.settings.contrast,
       },
     },
@@ -51,7 +52,11 @@ export function toDtcg(set: TokenSet, meta: DtcgMeta): Json {
 
   for (const r of set.ramps) {
     for (const [step, hex] of Object.entries(r.steps)) {
-      put(root, `color/${r.name}/${step}`, { $type: "color", $value: hex, $extensions: { [EXT]: { collection: "Primitives" } } });
+      // With brands, each primitive carries one value per brand (a mode of the Primitives collection).
+      const brands = set.brands.length
+        ? { brands: Object.fromEntries([["default", hex], ...set.brands.map((b) => [b.name, b.ramps.find((x) => x.name === r.name)?.steps[step] ?? hex])]) }
+        : {};
+      put(root, `color/${r.name}/${step}`, { $type: "color", $value: hex, $extensions: { [EXT]: { collection: "Primitives", ...brands } } });
     }
   }
   for (const s of set.semantic) {
@@ -99,6 +104,8 @@ export function toDtcg(set: TokenSet, meta: DtcgMeta): Json {
       })),
     });
   }
+  for (const d of set.motion.durations) put(root, `motion/duration/${d.name}`, { $type: "duration", $value: { value: d.value, unit: "ms" } });
+  for (const e of set.motion.easings) put(root, `motion/easing/${e.name}`, { $type: "cubicBezier", $value: e.value });
   return root;
 }
 

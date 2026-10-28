@@ -84,7 +84,7 @@ export function SemanticTab({ tokens, settings, update }: { tokens: TokenSet; se
             </thead>
             <tbody>
               {tokens.semantic.map((s, i) => (
-                <tr key={i} className="border-b last:border-0">
+                <tr key={i} className="border-b last:border-0" data-token-item>
                   <td className="px-3 py-1.5">
                     <div className="flex items-center gap-2">
                       <span className="flex shrink-0 gap-0.5">

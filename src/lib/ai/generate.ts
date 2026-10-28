@@ -5,13 +5,13 @@ import { extractJsonText, formatZodError } from "./json";
 import { recordUsage, type UsageKind } from "../usage";
 import { completeWithApi, describeApiError, hasApiKey } from "./provider-api";
 import { completeWithCli, findClaudeCli } from "./provider-cli";
-import { ZERO_USAGE, addUsage, type CompletionResult, type TokenUsage } from "./types";
+import { ZERO_USAGE, addUsage, type CompletionResult, type MediaPart, type TokenUsage } from "./types";
 
 export interface ResolvedProvider {
   kind: "api" | "cli";
   model: string;
   label: string;
-  run: (system: string, user: string, onText?: (d: string) => void, signal?: AbortSignal) => Promise<CompletionResult>;
+  run: (system: string, user: string, onText?: (d: string) => void, signal?: AbortSignal, media?: MediaPart[]) => Promise<CompletionResult>;
 }
 
 export async function resolveProvider(): Promise<ResolvedProvider> {
@@ -26,8 +26,8 @@ export async function resolveProvider(): Promise<ResolvedProvider> {
       kind: "api",
       model: s.model,
       label: `API · ${s.model}`,
-      run: (system, user, onText, signal) =>
-        completeWithApi({ system, user, model: s.model, effort: s.effort, onText, signal }),
+      run: (system, user, onText, signal, media) =>
+        completeWithApi({ system, user, media, model: s.model, effort: s.effort, onText, signal }),
     };
   }
 
@@ -43,8 +43,8 @@ export async function resolveProvider(): Promise<ResolvedProvider> {
     kind: "cli",
     model: s.model,
     label: `Claude Code CLI · ${s.model}`,
-    run: (system, user, onText, signal) =>
-      completeWithCli({ system, user, model: s.model, effort: s.effort, onText, signal }, cli),
+    run: (system, user, onText, signal, media) =>
+      completeWithCli({ system, user, media, model: s.model, effort: s.effort, onText, signal }, cli),
   };
 }
 
@@ -64,6 +64,8 @@ export interface UsageTag {
 export interface StructuredOptions<T> {
   system: string;
   user: string;
+  /** Images/PDFs sent with every attempt. */
+  media?: MediaPart[];
   schema: z.ZodType<T>;
   track: UsageTag;
   signal?: AbortSignal;
@@ -97,7 +99,7 @@ export async function generateStructured<T>(opts: StructuredOptions<T>): Promise
 
   const attempt = async (user: string) => {
     attempts++;
-    const res = await provider.run(opts.system, user, opts.onText, opts.signal);
+    const res = await provider.run(opts.system, user, opts.onText, opts.signal, opts.media);
     usage = addUsage(usage, res.usage);
     return res.text;
   };

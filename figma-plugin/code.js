@@ -152,19 +152,32 @@ async function importVariables(tokens) {
   const modeNames = modes.map((m) => (m === "light" ? "Light" : m === "dark" ? "Dark" : m));
 
   // Primitives: colours with collection "Primitives" (or plain hex colours under color/<ramp>/<step>).
+  // Brands are modes of this collection ("Default" + one per brand); semantic aliases follow them.
+  const brands = /** @type {string[]} */ (rootExt.brands || []);
   const prim = await collection("Primitives");
-  const primMode = ensureModes(prim, ["Value"]);
+  let primMode = ensureModes(prim, brands.length ? brands.map((b) => (b === "default" ? "Default" : b)) : ["Value"]);
+  let brandModes = brands;
+  if (!primMode) {
+    primMode = ensureModes(prim, ["Default"]);
+    brandModes = ["default"];
+    note("This Figma plan allows one mode per collection: only the default brand was imported.");
+  }
   const primVars = await variablesIn(prim);
   let n = 0;
   for (const t of flat) {
     if (t.type !== "color" || t.ext.collection === "Semantic") continue;
     if (typeof t.value !== "string" || t.value.charAt(0) !== "#") continue;
     const v = variable(primVars, t.path, prim, "COLOR");
-    v.setValueForMode(/** @type {string[]} */ (primMode)[0], rgba(t.value));
+    if (brandModes.length) {
+      const per = t.ext.brands || {};
+      brandModes.forEach((b, i) => v.setValueForMode(/** @type {string[]} */ (primMode)[i], rgba(per[b] || t.value)));
+    } else {
+      v.setValueForMode(/** @type {string[]} */ (primMode)[0], rgba(t.value));
+    }
     v.scopes = []; // hidden from pickers: use semantic colours in designs
     n++;
   }
-  note(`Primitives: ${n} colours`);
+  note(`Primitives: ${n} colours${brandModes.length > 1 ? " · brands " + brandModes.join(" / ") : ""}`);
 
   // Semantic: one value per mode, aliasing primitives.
   const sem = await collection("Semantic");
@@ -225,7 +238,24 @@ async function importVariables(tokens) {
     v.scopes = group === "radius" ? ["CORNER_RADIUS"] : group === "space" ? ["GAP", "WIDTH_HEIGHT"] : ["WIDTH_HEIGHT"];
     d++;
   }
-  note(`Dimensions: ${d} numbers`);
+  // Motion: durations as numbers (ms), easings as strings ("cubic-bezier(…)") — Figma has no
+  // duration/easing variable types, but prototypes and handoff can still read them by name.
+  let m = 0;
+  for (const t of flat) {
+    if (t.type === "duration") {
+      const ms = typeof t.value === "object" && t.value && t.value.unit === "s" ? px(t.value) * 1000 : px(t.value);
+      const v = variable(dimVars, t.path, dims, "FLOAT");
+      v.setValueForMode(/** @type {string[]} */ (dimMode)[0], ms);
+      v.scopes = [];
+      m++;
+    } else if (t.type === "cubicBezier" && Array.isArray(t.value)) {
+      const v = variable(dimVars, t.path, dims, "STRING");
+      v.setValueForMode(/** @type {string[]} */ (dimMode)[0], "cubic-bezier(" + t.value.join(", ") + ")");
+      v.scopes = [];
+      m++;
+    }
+  }
+  note(`Dimensions: ${d} numbers${m ? ` · motion: ${m}` : ""}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -597,8 +627,463 @@ async function importComponents(components, icons, replace) {
 }
 
 // ---------------------------------------------------------------------------
+// Showcase: a "MUNE Design System" page documenting what's in this file. Built from the file's own
+// variables, styles and components (not the payload), so it also reflects edits made in Figma.
+
+/** @param {string} name @param {"HORIZONTAL" | "VERTICAL"} dir @param {number} gap @param {number} [pad] */
+function stack(name, dir, gap, pad) {
+  const f = figma.createFrame();
+  f.name = name;
+  f.layoutMode = dir;
+  f.itemSpacing = gap;
+  f.paddingLeft = f.paddingRight = f.paddingTop = f.paddingBottom = pad || 0;
+  f.primaryAxisSizingMode = "AUTO";
+  f.counterAxisSizingMode = "AUTO";
+  f.fills = [];
+  return f;
+}
+
+/** A solid paint bound to a colour variable when it exists. @param {Map<string, Variable>} vars @param {string} name @param {string} fallback */
+function varPaint(vars, name, fallback) {
+  const c = rgba(fallback);
+  /** @type {SolidPaint} */
+  const p = { type: "SOLID", color: { r: c.r, g: c.g, b: c.b } };
+  const v = vars.get(name);
+  return v && v.resolvedType === "COLOR" ? figma.variables.setBoundVariableForPaint(p, "color", v) : p;
+}
+
+/** @param {Map<string, Variable>} vars @param {string} text @param {number} size @param {number} weight @param {string} [color] */
+async function label(vars, text, size, weight, color) {
+  const t = figma.createText();
+  t.fontName = (await fontFor("Inter", weight)) || { family: "Inter", style: "Regular" };
+  t.fontSize = size;
+  t.characters = text;
+  t.fills = [varPaint(vars, color || "color/text/default", color === "color/text/muted" ? "#737373" : "#171717")];
+  return t;
+}
+
+/** @param {Map<string, Variable>} vars @param {string} title @param {string} [sub] */
+async function section(vars, title, sub) {
+  const s = stack(title, "VERTICAL", 24, 40);
+  s.cornerRadius = 24;
+  s.fills = [varPaint(vars, "color/bg/surface", "#ffffff")];
+  s.strokes = [varPaint(vars, "color/border/default", "#e5e5e5")];
+  s.strokeWeight = 1;
+  const head = stack("Heading", "VERTICAL", 4);
+  head.appendChild(await label(vars, title, 24, 600));
+  if (sub) head.appendChild(await label(vars, sub, 13, 400, "color/text/muted"));
+  s.appendChild(head);
+  return s;
+}
+
+/** Value of a variable in a mode, following aliases, as a hex string. @param {Variable} v @param {string} modeId */
+async function resolvedHex(v, modeId) {
+  /** @type {any} */
+  let val = v.valuesByMode[modeId];
+  let guard = 0;
+  while (val && val.type === "VARIABLE_ALIAS" && guard++ < 6) {
+    const src = await figma.variables.getVariableByIdAsync(val.id);
+    if (!src) return "";
+    val = src.valuesByMode[Object.keys(src.valuesByMode)[0]];
+  }
+  return val && typeof val.r === "number" ? hex(val) : "";
+}
+
+/** @param {RGB | RGBA} c */
+function hex(c) {
+  const h = (/** @type {number} */ x) => Math.round(x * 255).toString(16).padStart(2, "0");
+  const a = "a" in c ? c.a : 1;
+  return "#" + h(c.r) + h(c.g) + h(c.b) + (a < 1 ? h(a) : "");
+}
+
+/** @param {string} systemName */
+async function buildShowcase(systemName) {
+  const cols = await figma.variables.getLocalVariableCollectionsAsync();
+  /** @type {Map<string, Variable>} */
+  const vars = new Map();
+  for (const v of await figma.variables.getLocalVariablesAsync()) if (!vars.has(v.name)) vars.set(v.name, v);
+  const byCollection = async (/** @type {string} */ name) => {
+    const c = cols.find((x) => x.name === name);
+    if (!c) return { col: null, list: /** @type {Variable[]} */ ([]) };
+    const list = [];
+    for (const id of c.variableIds) {
+      const v = await figma.variables.getVariableByIdAsync(id);
+      if (v) list.push(v);
+    }
+    return { col: c, list };
+  };
+  const prim = await byCollection("Primitives");
+  const sem = await byCollection("Semantic");
+  const dims = await byCollection("Dimensions");
+
+  let page = figma.root.children.find((p) => p.name === "MUNE Design System");
+  if (!page) {
+    page = figma.createPage();
+    page.name = "MUNE Design System";
+  }
+  await page.loadAsync();
+  for (const old of page.children.filter((n) => n.name === "MUNE Design System")) old.remove();
+
+  const root = stack("MUNE Design System", "VERTICAL", 48, 64);
+  root.fills = [varPaint(vars, "color/bg/default", "#fafafa")];
+  page.appendChild(root);
+
+  // Header
+  const header = stack("Header", "VERTICAL", 8);
+  header.appendChild(await label(vars, "MUNE Tokens · design system", 13, 500, "color/text/muted"));
+  header.appendChild(await label(vars, systemName, 48, 700));
+  header.appendChild(await label(vars, "Every swatch, style and component below is bound to this file's variables and styles.", 16, 400, "color/text/muted"));
+  root.appendChild(header);
+
+  // Primitives — one block per Primitives mode (brands).
+  if (prim.col && prim.list.length) {
+    for (const mode of prim.col.modes) {
+      const multi = prim.col.modes.length > 1;
+      const s = await section(vars, multi ? `Primitives · ${mode.name}` : "Colour primitives", "Ramps built in OKLCH; hidden from pickers — designs use semantic colours.");
+      s.setExplicitVariableModeForCollection(prim.col, mode.modeId);
+      /** @type {Map<string, Variable[]>} */
+      const ramps = new Map();
+      for (const v of prim.list) {
+        const parts = v.name.split("/");
+        const ramp = parts.slice(0, -1).join("/");
+        ramps.set(ramp, (ramps.get(ramp) || []).concat(v));
+      }
+      for (const [ramp, list] of ramps) {
+        const row = stack(ramp, "HORIZONTAL", 8);
+        for (const v of list) {
+          const sw = stack(v.name, "VERTICAL", 6);
+          const r = figma.createRectangle();
+          r.name = "swatch";
+          r.resize(88, 56);
+          r.cornerRadius = 10;
+          r.fills = [figma.variables.setBoundVariableForPaint({ type: "SOLID", color: { r: 0, g: 0, b: 0 } }, "color", v)];
+          sw.appendChild(r);
+          sw.appendChild(await label(vars, v.name.split("/").pop() || v.name, 11, 600));
+          sw.appendChild(await label(vars, (await resolvedHex(v, mode.modeId)).toUpperCase(), 10, 400, "color/text/muted"));
+          row.appendChild(sw);
+        }
+        const wrap = stack(ramp + " row", "VERTICAL", 8);
+        wrap.appendChild(await label(vars, ramp, 13, 600));
+        wrap.appendChild(row);
+        s.appendChild(wrap);
+      }
+      root.appendChild(s);
+    }
+  }
+
+  // Semantic — one column per mode, each pinned to that mode so it renders its own values.
+  if (sem.col && sem.list.length) {
+    const s = await section(vars, "Semantic colours", "What designs and code use. Each column is pinned to one mode.");
+    const columns = stack("Modes", "HORIZONTAL", 24);
+    for (const mode of sem.col.modes) {
+      const col = stack(mode.name, "VERTICAL", 10, 24);
+      col.cornerRadius = 16;
+      col.setExplicitVariableModeForCollection(sem.col, mode.modeId);
+      col.fills = [varPaint(vars, "color/bg/default", "#fafafa")];
+      col.strokes = [varPaint(vars, "color/border/default", "#e5e5e5")];
+      col.strokeWeight = 1;
+      col.appendChild(await label(vars, mode.name, 16, 600));
+      for (const v of sem.list) {
+        const row = stack(v.name, "HORIZONTAL", 12);
+        row.counterAxisAlignItems = "CENTER";
+        const r = figma.createRectangle();
+        r.resize(32, 32);
+        r.cornerRadius = 8;
+        r.fills = [figma.variables.setBoundVariableForPaint({ type: "SOLID", color: { r: 0, g: 0, b: 0 } }, "color", v)];
+        r.strokes = [varPaint(vars, "color/border/default", "#e5e5e5")];
+        row.appendChild(r);
+        const txt = stack("label", "VERTICAL", 0);
+        txt.appendChild(await label(vars, v.name, 12, 600));
+        if (v.description) txt.appendChild(await label(vars, v.description, 11, 400, "color/text/muted"));
+        row.appendChild(txt);
+        col.appendChild(row);
+      }
+      columns.appendChild(col);
+    }
+    s.appendChild(columns);
+    root.appendChild(s);
+  }
+
+  // Typography — samples use the text styles themselves.
+  const textStyles = await figma.getLocalTextStylesAsync();
+  if (textStyles.length) {
+    const s = await section(vars, "Typography", "Text styles: size / line height · weight · letter spacing.");
+    for (const st of textStyles) {
+      const row = stack(st.name, "HORIZONTAL", 32);
+      row.counterAxisAlignItems = "CENTER";
+      const meta = stack("meta", "VERTICAL", 2);
+      meta.resize(220, meta.height);
+      meta.primaryAxisSizingMode = "AUTO";
+      meta.counterAxisSizingMode = "FIXED";
+      meta.appendChild(await label(vars, st.name, 12, 600));
+      const lh = st.lineHeight.unit === "PIXELS" ? `${st.lineHeight.value}px` : st.lineHeight.unit === "PERCENT" ? `${st.lineHeight.value}%` : "auto";
+      const ls = st.letterSpacing.unit === "PERCENT" ? `${st.letterSpacing.value}%` : `${st.letterSpacing.value}px`;
+      meta.appendChild(await label(vars, `${st.fontName.family} ${st.fontName.style} · ${st.fontSize}/${lh} · ${ls}`, 11, 400, "color/text/muted"));
+      row.appendChild(meta);
+      await figma.loadFontAsync(st.fontName);
+      const sample = figma.createText();
+      sample.fontName = st.fontName;
+      sample.characters = "The quick brown fox jumps over the lazy dog";
+      await sample.setTextStyleIdAsync(st.id);
+      sample.fills = [varPaint(vars, "color/text/default", "#171717")];
+      // Wrap within the section (1440 − root and section padding − the meta column).
+      sample.resize(960, sample.height);
+      sample.textAutoResize = "HEIGHT";
+      row.appendChild(sample);
+      s.appendChild(row);
+    }
+    root.appendChild(s);
+  }
+
+  // Spacing, radius and motion from the Dimensions collection.
+  if (dims.col && dims.list.length) {
+    const modeId = dims.col.modes[0].modeId;
+    const accent = varPaint(vars, "color/action/primary/default", "#171717");
+    const space = dims.list.filter((v) => v.name.indexOf("space/") === 0);
+    if (space.length) {
+      const s = await section(vars, "Spacing", "Bars are bound to the spacing variables.");
+      for (const v of space) {
+        const row = stack(v.name, "HORIZONTAL", 16);
+        row.counterAxisAlignItems = "CENTER";
+        const name = await label(vars, `${v.name} · ${v.valuesByMode[modeId]}px`, 12, 500);
+        name.resize(180, name.height);
+        name.textAutoResize = "HEIGHT";
+        row.appendChild(name);
+        const bar = figma.createRectangle();
+        bar.resize(Math.max(1, Number(v.valuesByMode[modeId]) || 1), 16);
+        bar.cornerRadius = 4;
+        bar.fills = [accent];
+        bar.setBoundVariable("width", v);
+        row.appendChild(bar);
+        s.appendChild(row);
+      }
+      root.appendChild(s);
+    }
+    const radius = dims.list.filter((v) => v.name.indexOf("radius/") === 0);
+    if (radius.length) {
+      const s = await section(vars, "Radius");
+      const row = stack("Radii", "HORIZONTAL", 24);
+      for (const v of radius) {
+        const cell = stack(v.name, "VERTICAL", 8);
+        const box = figma.createRectangle();
+        box.resize(88, 88);
+        box.fills = [varPaint(vars, "color/bg/subtle", "#f5f5f5")];
+        box.strokes = [accent];
+        box.strokeWeight = 2;
+        for (const corner of /** @type {VariableBindableNodeField[]} */ (["topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius"])) box.setBoundVariable(corner, v);
+        cell.appendChild(box);
+        cell.appendChild(await label(vars, `${v.name} · ${v.valuesByMode[modeId]}px`, 11, 500));
+        row.appendChild(cell);
+      }
+      s.appendChild(row);
+      root.appendChild(s);
+    }
+    const motion = dims.list.filter((v) => v.name.indexOf("motion/") === 0);
+    if (motion.length) {
+      const s = await section(vars, "Motion", "Durations (ms) and easing curves, as variables for prototypes and handoff.");
+      for (const v of motion) s.appendChild(await label(vars, `${v.name}  ·  ${v.valuesByMode[modeId]}${v.resolvedType === "FLOAT" ? "ms" : ""}`, 13, 400));
+      root.appendChild(s);
+    }
+  }
+
+  // Shadows — cards using the effect styles.
+  const effects = await figma.getLocalEffectStylesAsync();
+  if (effects.length) {
+    const s = await section(vars, "Shadows");
+    const row = stack("Shadows", "HORIZONTAL", 40, 32);
+    // Shadows read best on the page background, not on the white section.
+    row.fills = [varPaint(vars, "color/bg/subtle", "#f5f5f5")];
+    row.cornerRadius = 16;
+    for (const st of effects) {
+      const cell = stack(st.name, "VERTICAL", 12);
+      const card = figma.createFrame();
+      card.resize(180, 112);
+      card.cornerRadius = 16;
+      card.fills = [varPaint(vars, "color/bg/surface", "#ffffff")];
+      await card.setEffectStyleIdAsync(st.id);
+      cell.appendChild(card);
+      cell.appendChild(await label(vars, st.name, 12, 600));
+      row.appendChild(cell);
+    }
+    s.appendChild(row);
+    root.appendChild(s);
+  }
+
+  // Components — the default variant of each set on the MUNE Components page.
+  const compPage = figma.root.children.find((p) => p.name === "MUNE Components");
+  if (compPage) {
+    await compPage.loadAsync();
+    const sets = /** @type {ComponentSetNode[]} */ (compPage.children.filter((n) => n.type === "COMPONENT_SET"));
+    if (sets.length) {
+      const s = await section(vars, "Components", "Default variant of each component; the full sets live on the MUNE Components page.");
+      const grid = stack("Components", "HORIZONTAL", 32);
+      grid.layoutWrap = "WRAP";
+      grid.counterAxisSpacing = 32;
+      grid.primaryAxisSizingMode = "FIXED";
+      grid.resize(1232, grid.height);
+      for (const set of sets) {
+        const cell = stack(set.name, "VERTICAL", 12);
+        cell.appendChild(await label(vars, set.name, 13, 600));
+        const main = set.defaultVariant || /** @type {ComponentNode} */ (set.children[0]);
+        if (main) cell.appendChild(main.createInstance());
+        grid.appendChild(cell);
+      }
+      s.appendChild(grid);
+      root.appendChild(s);
+    }
+  }
+
+  // Sections share the root's width.
+  for (const child of root.children) if ("layoutSizingHorizontal" in child) child.layoutSizingHorizontal = "FILL";
+  root.primaryAxisSizingMode = "AUTO";
+  root.counterAxisSizingMode = "FIXED";
+  root.resize(1440, root.height);
+  note(`Showcase: “MUNE Design System” page (${root.children.length - 1} sections)`);
+  return { page: page, root: root };
+}
+
+// ---------------------------------------------------------------------------
+// Export from Figma (round trip): this file's variables and styles as W3C tokens JSON that
+// MUNE Tokens imports (Import from Figma / JSON…).
+
+/** @param {string} name */
+function slugPath(name) {
+  return name
+    .split("/")
+    .map((s) => s.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "x");
+}
+
+async function exportTokens() {
+  /** @type {Record<string, any>} */
+  const root = {};
+  const put = (/** @type {string[]} */ path, /** @type {any} */ token) => {
+    let node = root;
+    for (const p of path.slice(0, -1)) node = node[p] = node[p] || {};
+    node[path[path.length - 1]] = token;
+  };
+  const cols = await figma.variables.getLocalVariableCollectionsAsync();
+  /** @type {Map<string, Variable>} */
+  const byId = new Map();
+  for (const v of await figma.variables.getLocalVariablesAsync()) byId.set(v.id, v);
+  const alias = (/** @type {any} */ val) => {
+    const src = val && val.type === "VARIABLE_ALIAS" ? byId.get(val.id) : null;
+    return src ? "{" + slugPath(src.name).join(".") + "}" : null;
+  };
+  let semanticModes = ["light", "dark"];
+  /** @type {string[] | null} */
+  let brands = null;
+  let count = 0;
+
+  for (const col of cols) {
+    const modeNames = col.modes.map((m) => m.name.toLowerCase());
+    const isSemantic = modeNames.indexOf("light") !== -1 || modeNames.indexOf("dark") !== -1 || col.name === "Semantic";
+    if (isSemantic) semanticModes = modeNames.filter((m) => m === "light" || m === "dark");
+    for (const id of col.variableIds) {
+      const v = byId.get(id);
+      if (!v) continue;
+      const path = slugPath(v.name);
+      const first = v.valuesByMode[col.modes[0].modeId];
+      if (v.resolvedType === "COLOR") {
+        if (isSemantic) {
+          /** @type {Record<string, string>} */
+          const modes = {};
+          for (const m of col.modes) {
+            const val = /** @type {any} */ (v.valuesByMode[m.modeId]);
+            const key = m.name.toLowerCase();
+            modes[key === "light" || key === "dark" ? key : key] = alias(val) || (val && typeof val.r === "number" ? hex(val) : "#000000");
+          }
+          const firstMode = Object.keys(modes)[0];
+          put(path[0] === "color" ? path : ["color"].concat(path), {
+            $type: "color",
+            $value: modes[firstMode],
+            ...(v.description ? { $description: v.description } : {}),
+            $extensions: { "mune.tokens": { collection: "Semantic", modes: { light: modes.light || modes[firstMode], dark: modes.dark || modes[firstMode] } } },
+          });
+        } else {
+          const val = /** @type {any} */ (first);
+          const value = alias(val) || (val && typeof val.r === "number" ? hex(val) : null);
+          if (!value) continue;
+          /** @type {any} */
+          const ext = { collection: "Primitives" };
+          if (col.modes.length > 1) {
+            brands = col.modes.map((m, i) => (i === 0 ? "default" : slugPath(m.name).join("-")));
+            ext.brands = {};
+            col.modes.forEach((m, i) => {
+              const mv = /** @type {any} */ (v.valuesByMode[m.modeId]);
+              if (mv && typeof mv.r === "number") ext.brands[i === 0 ? "default" : slugPath(m.name).join("-")] = hex(mv);
+            });
+          }
+          put(path[0] === "color" ? path : ["color"].concat(path), { $type: "color", $value: value, $extensions: { "mune.tokens": ext } });
+        }
+        count++;
+      } else if (v.resolvedType === "FLOAT" && typeof first === "number") {
+        if (path[0] === "motion" && path[1] === "duration") put(path, { $type: "duration", $value: { value: first, unit: "ms" } });
+        else put(path, { $type: "dimension", $value: { value: first, unit: "px" } });
+        count++;
+      } else if (v.resolvedType === "STRING" && typeof first === "string") {
+        const m = first.match(/cubic-bezier\(([^)]+)\)/);
+        if (!m) continue;
+        put(path, { $type: "cubicBezier", $value: m[1].split(",").map((x) => Number(x.trim())) });
+        count++;
+      }
+    }
+  }
+
+  // Text styles → fonts + typography.
+  /** @type {Map<string, string>} */
+  const fontKeys = new Map();
+  for (const st of await figma.getLocalTextStylesAsync()) {
+    const fam = st.fontName.family;
+    if (!fontKeys.has(fam)) {
+      const key = /mono/i.test(fam) ? "mono" : fontKeys.size === 0 ? "sans" : /serif/i.test(fam) ? "serif" : `font-${fontKeys.size + 1}`;
+      fontKeys.set(fam, key);
+      put(["font", key], { $type: "fontFamily", $value: [fam, key === "mono" ? "ui-monospace" : "system-ui", key === "mono" ? "monospace" : "sans-serif"] });
+    }
+    const size = st.fontSize;
+    const lh = st.lineHeight.unit === "PIXELS" ? st.lineHeight.value : st.lineHeight.unit === "PERCENT" ? (size * st.lineHeight.value) / 100 : Math.round(size * 1.2);
+    const em = st.letterSpacing.unit === "PERCENT" ? st.letterSpacing.value / 100 : st.letterSpacing.value / size;
+    put(["typography"].concat(slugPath(st.name)), {
+      $type: "typography",
+      $value: { fontFamily: `{font.${fontKeys.get(fam)}}`, fontSize: { value: size, unit: "px" }, fontWeight: weightOf(st.fontName.style), lineHeight: Math.round((lh / size) * 10000) / 10000, letterSpacing: { value: Math.round(em * size * 100) / 100, unit: "px" } },
+      $extensions: { "mune.tokens": { lineHeightPx: Math.round(lh), letterSpacingEm: Math.round(em * 1000) / 1000 } },
+    });
+    count++;
+  }
+
+  // Effect styles → shadows.
+  for (const st of await figma.getLocalEffectStylesAsync()) {
+    const layers = st.effects
+      .filter((e) => e.type === "DROP_SHADOW" || e.type === "INNER_SHADOW")
+      .map((e) => {
+        const s = /** @type {DropShadowEffect} */ (e);
+        return { color: hex(s.color), offsetX: { value: s.offset.x, unit: "px" }, offsetY: { value: s.offset.y, unit: "px" }, blur: { value: s.radius, unit: "px" }, spread: { value: s.spread || 0, unit: "px" }, ...(e.type === "INNER_SHADOW" ? { inset: true } : {}) };
+      });
+    if (!layers.length) continue;
+    const path = slugPath(st.name);
+    put(path[0] === "shadow" ? path : ["shadow"].concat(path), { $type: "shadow", $value: layers });
+    count++;
+  }
+
+  root.$description = `${figma.root.name} — exported from Figma by MUNE Tokens Importer.`;
+  root.$extensions = { "mune.tokens": { name: figma.root.name, modes: semanticModes.length ? semanticModes : ["light"], ...(brands ? { brands } : {}) } };
+  note(`Exported ${count} tokens from this file.`);
+  return root;
+}
+
+// ---------------------------------------------------------------------------
 
 figma.ui.onmessage = async (msg) => {
+  if (msg.type === "export") {
+    log = [];
+    try {
+      const json = await exportTokens();
+      figma.ui.postMessage({ type: "exported", json: JSON.stringify(json, null, 2), name: figma.root.name });
+    } catch (e) {
+      note("Error: " + (e instanceof Error ? e.message : String(e)));
+      figma.ui.postMessage({ type: "done", ok: false });
+    }
+    return;
+  }
   if (msg.type !== "import") return;
   log = [];
   const p = msg.payload;
@@ -611,6 +1096,10 @@ figma.ui.onmessage = async (msg) => {
     if (o.components) {
       if (p.app === "mune-tokens") await importComponents(p.components || [], p.icons || {}, !!o.replace);
       else note("Components need the app link (a tokens.json file has no components).");
+    }
+    if (o.showcase) {
+      const { page } = await buildShowcase(p.app === "mune-tokens" ? p.name : figma.root.name);
+      await figma.setCurrentPageAsync(page);
     }
     figma.ui.postMessage({ type: "done", ok: true });
     figma.notify("MUNE Tokens imported");

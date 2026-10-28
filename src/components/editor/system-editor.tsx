@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ArchiveRestore, Copy, Ellipsis, ExternalLink, FolderOpen, Loader2, Save, Settings2, Sparkles, Trash2, TriangleAlert } from "lucide-react";
+import { Archive, ArchiveRestore, Copy, Ellipsis, ExternalLink, FileJson, FolderOpen, History, Loader2, Save, Settings2, Sparkles, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,10 @@ import { DimensionTab, ShadowsTab } from "./scales-tab";
 import { ExportTab, copyUiConfig, openFolder, openInBrowser } from "./export-tab";
 import { RegenerateDialog } from "./regenerate-dialog";
 import { ComponentsTab } from "@/components/components/components-tab";
+import { MotionTab } from "./motion-tab";
+import { BrandsPanel } from "./brands-panel";
+import { HistoryDialog } from "./history-dialog";
+import { ImportDialog } from "./import-dialog";
 import { SystemSettingsDialog } from "./settings-dialog";
 import { findProblems, type GroupKey, type SystemSettings, type TokenSet } from "@/lib/tokens/schema";
 import { contrastPairs, pairPasses } from "@/lib/tokens/color";
@@ -48,7 +52,7 @@ export interface EditorInitial {
   pluginManifest?: string;
 }
 
-type Tab = "colors" | "semantic" | "typography" | "spacing" | "radius" | "shadows" | "breakpoints" | "components" | "export";
+type Tab = "colors" | "semantic" | "typography" | "spacing" | "radius" | "shadows" | "breakpoints" | "motion" | "components" | "export";
 
 const TABS: { value: Tab; label: string; group?: GroupKey; page?: ExportPage }[] = [
   { value: "colors", label: "Colours", group: "ramps", page: "colors" },
@@ -58,6 +62,7 @@ const TABS: { value: Tab; label: string; group?: GroupKey; page?: ExportPage }[]
   { value: "radius", label: "Radius", group: "radius", page: "spacing" },
   { value: "shadows", label: "Shadows", group: "shadows", page: "effects" },
   { value: "breakpoints", label: "Breakpoints", group: "breakpoints", page: "spacing" },
+  { value: "motion", label: "Motion", group: "motion", page: "effects" },
   { value: "components", label: "Components", page: "components" },
   { value: "export", label: "Export" },
 ];
@@ -81,6 +86,8 @@ export function SystemEditor({ initial }: { initial: EditorInitial }) {
   const [tab, setTab] = useState<Tab>("colors");
   const [regen, setRegen] = useState<GroupKey | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [uiConfigEdited, setUiConfigEdited] = useState(!!initial.uiConfigEdited);
   const usageIds = useRef<string[]>(initial.usageIds ?? []);
 
@@ -158,6 +165,34 @@ export function SystemEditor({ initial }: { initial: EditorInitial }) {
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
+      // J/K (or arrows) move between tokens in the current tab; E edits the focused one.
+      const key = e.key.toLowerCase();
+      if (key === "j" || key === "k" || ((e.key === "ArrowDown" || e.key === "ArrowUp") && (e.target as HTMLElement)?.closest?.("[data-token-item]"))) {
+        const panel = document.querySelector<HTMLElement>('[role="tabpanel"][data-state="active"]');
+        const items = Array.from(panel?.querySelectorAll<HTMLElement>("[data-token-item]") ?? []);
+        if (!items.length) return;
+        e.preventDefault();
+        const here = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("[data-token-item]");
+        const i = here ? items.indexOf(here) : -1;
+        const down = key === "j" || e.key === "ArrowDown";
+        const next = items[Math.max(0, Math.min(items.length - 1, i === -1 ? 0 : i + (down ? 1 : -1)))];
+        if (!next.hasAttribute("tabindex") && next.tagName !== "BUTTON") next.setAttribute("tabindex", "-1");
+        next.focus();
+        next.scrollIntoView({ block: "nearest" });
+        return;
+      }
+      if (key === "e") {
+        const here = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("[data-token-item]");
+        if (!here) return;
+        e.preventDefault();
+        if (here.tagName === "BUTTON") return here.click();
+        const field = here.querySelector<HTMLElement>("input:not([type=color]), button[aria-label], [role=combobox]");
+        if (field instanceof HTMLInputElement) {
+          field.focus();
+          field.select();
+        } else field?.click();
+        return;
+      }
       if ((e.key === "g" || e.key === "G") && activeTab.group) {
         e.preventDefault();
         setRegen(activeTab.group);
@@ -232,6 +267,11 @@ export function SystemEditor({ initial }: { initial: EditorInitial }) {
             <Button variant="outline" size="sm" onClick={openCurrent} disabled={!id}>
               <ExternalLink /> Open in browser <Kbd className="ml-0.5">O</Kbd>
             </Button>
+            {id && (
+              <Button variant="outline" size="icon-sm" aria-label="Version history" title="Version history" onClick={() => setHistoryOpen(true)}>
+                <History />
+              </Button>
+            )}
             <Button variant="outline" size="icon-sm" aria-label="System settings" title="System settings" onClick={() => setSettingsOpen(true)}>
               <Settings2 />
             </Button>
@@ -248,6 +288,9 @@ export function SystemEditor({ initial }: { initial: EditorInitial }) {
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => copyUiConfig(id)}>
                     <Copy /> Copy UI config
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setImportOpen(true)}>
+                    <FileJson /> Import from Figma / JSON…
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {status === "active" ? (
@@ -321,6 +364,7 @@ export function SystemEditor({ initial }: { initial: EditorInitial }) {
           </TabsList>
           <TabsContent value="colors">
             <ColorsTab tokens={tokens} settings={settings} update={update} />
+            <BrandsPanel tokens={tokens} settings={settings} update={update} />
           </TabsContent>
           <TabsContent value="semantic">
             <SemanticTab tokens={tokens} settings={settings} update={update} />
@@ -340,11 +384,14 @@ export function SystemEditor({ initial }: { initial: EditorInitial }) {
           <TabsContent value="breakpoints">
             <DimensionTab kind="breakpoints" tokens={tokens} update={update} />
           </TabsContent>
+          <TabsContent value="motion">
+            <MotionTab tokens={tokens} update={update} />
+          </TabsContent>
           <TabsContent value="components">
             <ComponentsTab systemId={id} tokens={tokens} settings={settings} dirty={dirty} />
           </TabsContent>
           <TabsContent value="export">
-            <ExportTab id={id} dirty={dirty} settings={settings} folder={folder} folderError={folderError} pluginManifest={initial.pluginManifest ?? null} />
+            <ExportTab id={id} dirty={dirty} settings={settings} folder={folder} folderError={folderError} pluginManifest={initial.pluginManifest ?? null} brands={tokens.brands.map((b) => b.name)} />
           </TabsContent>
         </Tabs>
       </div>
@@ -359,6 +406,20 @@ export function SystemEditor({ initial }: { initial: EditorInitial }) {
           toast("Applied to the draft. Save to keep it.");
         }}
       />
+      {id && (
+        <HistoryDialog
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
+          systemId={id}
+          current={tokens}
+          onRestore={(v) => {
+            setName(v.name);
+            setSettings(v.settings);
+            setTokens(v.tokens);
+          }}
+        />
+      )}
+      <ImportDialog open={importOpen} onOpenChange={setImportOpen} current={tokens} onApply={setTokens} />
       <SystemSettingsDialog
         open={settingsOpen}
         onOpenChange={setSettingsOpen}

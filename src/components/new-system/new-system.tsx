@@ -19,13 +19,16 @@ import { SCOPES, SCOPE_LABELS, type Scope, type SystemSettings } from "@/lib/tok
 import { formatBytes, formatTokens, formatUsd } from "@/lib/format";
 import type { BriefFile } from "@/lib/types";
 import type { UsageInfo } from "@/lib/ai/events";
+import type { MediaPart } from "@/lib/ai/types";
+import { MEDIA_ACCEPT, isMediaFile, readMedia } from "@/lib/client/media";
 
-const TEXT_EXT = /\.(css|json|md|txt|scss|less|js|ts)$/i;
+const TEXT_EXT = /\.(css|json|md|txt|scss|less|js|ts|svg)$/i;
 
 export function NewSystem({ defaults }: { defaults: SystemSettings }) {
   const [brief, setBrief] = useState("");
   const [settings, setSettings] = useState<SystemSettings>(defaults);
   const [files, setFiles] = useState<BriefFile[]>([]);
+  const [media, setMedia] = useState<MediaPart[]>([]);
   const [busy, setBusy] = useState(false);
   const [streamed, setStreamed] = useState("");
   const [status, setStatus] = useState("");
@@ -49,8 +52,17 @@ export function NewSystem({ defaults }: { defaults: SystemSettings }) {
     if (!list) return;
     const added: BriefFile[] = [];
     for (const f of Array.from(list)) {
+      if (isMediaFile(f.name)) {
+        try {
+          const part = await readMedia(f);
+          setMedia((prev) => [...prev, part].slice(0, 6));
+        } catch (err) {
+          toast.error((err as Error).message);
+        }
+        continue;
+      }
       if (!TEXT_EXT.test(f.name)) {
-        toast(`${f.name}: only text files (.css, .json, .md, .txt) can be attached for now.`);
+        toast(`${f.name}: attach images, PDFs or text files (.css, .json, .md, .txt, .svg).`);
         continue;
       }
       if (f.size > 400_000) {
@@ -75,7 +87,7 @@ export function NewSystem({ defaults }: { defaults: SystemSettings }) {
     try {
       const { data, usage } = await streamAi<Generation>(
         "/api/ai/generate",
-        { brief, settings, files },
+        { brief, settings, files, media },
         {
           onMeta: (label) => setStatus(`Generating with ${label}`),
           onText: (d) => setStreamed((s) => s + d),
@@ -155,8 +167,29 @@ export function NewSystem({ defaults }: { defaults: SystemSettings }) {
               <Button variant="ghost" size="sm" onClick={() => fileInput.current?.click()} disabled={busy}>
                 <Paperclip /> Add files
               </Button>
-              <input ref={fileInput} type="file" multiple hidden accept=".css,.json,.md,.txt,.scss,.less" onChange={(e) => (addFiles(e.target.files), (e.target.value = ""))} />
+              <input ref={fileInput} type="file" multiple hidden accept={`.css,.json,.md,.txt,.scss,.less,.svg,${MEDIA_ACCEPT}`} onChange={(e) => (addFiles(e.target.files), (e.target.value = ""))} />
             </div>
+            {media.length > 0 && (
+              <ul className="mb-1 flex flex-wrap gap-2">
+                {media.map((m, i) => (
+                  <li key={i} className="relative overflow-hidden rounded-lg bg-surface-2 ring-1 ring-white/10">
+                    {m.mediaType === "application/pdf" ? (
+                      <span className="grid size-16 place-items-center px-1 text-center font-mono text-[0.6rem] break-all">PDF · {m.name}</span>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={`data:${m.mediaType};base64,${m.data}`} alt={m.name} className="size-16 object-contain" />
+                    )}
+                    <button
+                      aria-label={`Remove ${m.name}`}
+                      onClick={() => setMedia(media.filter((_, j) => j !== i))}
+                      className="absolute top-0.5 right-0.5 rounded-full bg-black/70 p-0.5 text-white"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
             {files.length > 0 ? (
               <ul className="space-y-1">
                 {files.map((f, i) => (
@@ -171,8 +204,8 @@ export function NewSystem({ defaults }: { defaults: SystemSettings }) {
                   </li>
                 ))}
               </ul>
-            ) : (
-              <p className="text-xs text-subtle-foreground">Existing CSS, tokens JSON or brand notes (.css, .json, .md, .txt).</p>
+            ) : media.length > 0 ? null : (
+              <p className="text-xs text-subtle-foreground">Logo, screenshots or a brand PDF (Claude reads the colours and type), plus CSS, tokens JSON or notes.</p>
             )}
           </div>
 

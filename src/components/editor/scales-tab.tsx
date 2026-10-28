@@ -45,7 +45,7 @@ export function DimensionTab({ kind, tokens, update }: { kind: DimKey; tokens: T
       />
       <div className="space-y-1.5 rounded-2xl border bg-card p-3">
         {items.map((d, i) => (
-          <div key={i} className="flex items-center gap-3 rounded-xl px-2 py-1 hover:bg-surface-2">
+          <div key={i} className="flex items-center gap-3 rounded-xl px-2 py-1 hover:bg-surface-2" data-token-item>
             <span className="w-24 shrink-0 font-mono text-xs text-subtle-foreground">{meta.prefix}/</span>
             <CommitInput
               value={d.name}
@@ -102,7 +102,7 @@ export function ShadowsTab({ tokens, update }: { tokens: TokenSet; update: Updat
       />
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {tokens.shadows.map((s, i) => (
-          <div key={i} className="rounded-2xl border bg-card p-4">
+          <div key={i} className="rounded-2xl border bg-card p-4" data-token-item>
             <div className="flex items-center gap-2">
               <span className="font-mono text-xs text-subtle-foreground">shadow/</span>
               <CommitInput

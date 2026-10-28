@@ -20,6 +20,8 @@ export async function GET(request: Request, ctx: RouteContext<"/export/[id]/[pag
   const modes = modesOf(rec.settings);
   const asked = url.searchParams.get("mode") as Mode | null;
   const mode: Mode = asked && modes.includes(asked) ? asked : modes[0];
+  const askedBrand = url.searchParams.get("brand");
+  const brand = askedBrand && rec.tokens.brands.some((b) => b.name === askedBrand) ? askedBrand : null;
 
   const html = renderExportPage(rec.tokens, page as ExportPage, mode, {
     name: rec.name,
@@ -27,10 +29,11 @@ export async function GET(request: Request, ctx: RouteContext<"/export/[id]/[pag
     settings: rec.settings,
     fontLinks: await fontLinksFor(rec.tokens),
     components: page === "components" ? readyComponents(id).map((c) => c.spec!) : [],
+    brand,
   });
   const headers: Record<string, string> = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" };
   if (url.searchParams.get("download") === "1") {
-    headers["Content-Disposition"] = `attachment; filename="${slugify(rec.name)}-${page}-${mode}.html"`;
+    headers["Content-Disposition"] = `attachment; filename="${slugify(rec.name)}-${page}-${mode}${brand ? `-${brand}` : ""}.html"`;
   }
   return new Response(html, { headers });
 }

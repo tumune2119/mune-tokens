@@ -42,10 +42,19 @@
     <label><input type="checkbox" id="o-effects" checked> Effect styles</label>
     <label><input type="checkbox" id="o-components" checked> Components (from the app link)</label>
     <label style="padding-left:22px"><input type="checkbox" id="o-replace"> Replace existing component sets</label>
+    <label><input type="checkbox" id="o-showcase" checked> Showcase page (“MUNE Design System”)</label>
   </div>
 
   <button class="primary" id="run" disabled>Import</button>
   <pre id="log"></pre>
+
+  <h1 style="margin-top:20px">Export from Figma</h1>
+  <p>This file's variables, text and effect styles as tokens JSON. In MUNE TOKENS: ⋯ → Import from Figma / JSON (or New system → Import tokens JSON).</p>
+  <div class="row">
+    <button id="export">Export tokens</button>
+    <a id="download" style="display:none">Download .json</a>
+    <button id="copy" style="display:none">Copy</button>
+  </div>
 
 <script>
   const $ = (id) => document.getElementById(id);
@@ -97,13 +106,44 @@
       effectStyles: $("o-effects").checked,
       components: $("o-components").checked,
       replace: $("o-replace").checked,
+      showcase: $("o-showcase").checked,
     } } }, "*");
+  };
+
+  let exported = "";
+  $("export").onclick = () => {
+    $("log").textContent = "";
+    parent.postMessage({ pluginMessage: { type: "export" } }, "*");
+  };
+  $("copy").onclick = async () => {
+    // The clipboard API is often blocked in plugin iframes; fall back to a hidden textarea.
+    try {
+      await navigator.clipboard.writeText(exported);
+    } catch (e) {
+      const t = document.createElement("textarea");
+      t.value = exported;
+      document.body.appendChild(t);
+      t.select();
+      document.execCommand("copy");
+      t.remove();
+    }
+    $("log").textContent += "Copied.\n";
   };
 
   onmessage = (e) => {
     const m = e.data.pluginMessage;
     if (!m) return;
     if (m.type === "log") $("log").textContent += m.line + "\n";
+    if (m.type === "exported") {
+      exported = m.json;
+      const a = $("download");
+      a.href = URL.createObjectURL(new Blob([m.json], { type: "application/json" }));
+      a.download = (m.name || "figma").replace(/[^\w-]+/g, "-").toLowerCase() + ".tokens.json";
+      a.style.display = "inline";
+      a.className = "";
+      a.style.alignSelf = "center";
+      $("copy").style.display = "inline-block";
+    }
     if (m.type === "done") {
       $("run").disabled = false;
       $("run").textContent = "Import";

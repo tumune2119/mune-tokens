@@ -1,10 +1,10 @@
 import "server-only";
 import fs from "node:fs";
 import path from "node:path";
-import { desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "./db";
-import { exportEvents, systems } from "./db/schema";
+import { exportEvents, systemVersions, systems } from "./db/schema";
 import { projectRoot } from "./settings";
 import { checkUiConfig, slugify, writeProjectFiles } from "./project-files";
 import { linkUsageToSystem } from "./usage";
@@ -138,6 +138,7 @@ export async function createSystem(input: SaveInput & { usageIds?: string[] }): 
     .run();
   for (const u of input.usageIds ?? []) linkUsageToSystem(u, id, input.name);
   const rec = getSystem(id)!;
+  snapshot(rec);
   await syncFolder(rec);
   return getSystem(id)!;
 }
@@ -158,6 +159,7 @@ export async function saveSystem(id: string, input: SaveInput): Promise<SystemRe
     .where(eq(systems.id, id))
     .run();
   const rec = getSystem(id)!;
+  snapshot(rec);
   await syncFolder(rec);
   return getSystem(id)!;
 }
@@ -178,6 +180,7 @@ export function setStatus(id: string, status: SystemStatus) {
 export function deleteSystem(id: string) {
   getDb().delete(systems).where(eq(systems.id, id)).run();
   deleteSystemComponents(id);
+  getDb().delete(systemVersions).where(eq(systemVersions.systemId, id)).run();
 }
 
 export function uiConfigState(rec: SystemRecord) {
@@ -206,4 +209,65 @@ export function parseSaveInput(v: unknown): SaveInput {
     settings: SystemSettingsSchema.parse(o.settings ?? {}),
     tokens: TokenSetSchema.parse(o.tokens),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Version history
+
+function snapshot(rec: SystemRecord) {
+  getDb()
+    .insert(systemVersions)
+    .values({
+      id: nanoid(12),
+      systemId: rec.id,
+      version: rec.version,
+      name: rec.name,
+      settings: JSON.stringify(rec.settings),
+      tokens: JSON.stringify(rec.tokens),
+      createdAt: Date.now(),
+    })
+    .run();
+}
+
+export interface VersionMeta {
+  version: number;
+  name: string;
+  createdAt: number;
+  tokenCount: number;
+}
+
+export function listVersions(systemId: string): VersionMeta[] {
+  return getDb()
+    .select()
+    .from(systemVersions)
+    .where(eq(systemVersions.systemId, systemId))
+    .orderBy(desc(systemVersions.version))
+    .all()
+    .map((r) => {
+      const t = TokenSetSchema.safeParse(JSON.parse(r.tokens));
+      return { version: r.version, name: r.name, createdAt: r.createdAt, tokenCount: t.success ? countTokens(t.data) : 0 };
+    });
+}
+
+export function getVersion(systemId: string, version: number) {
+  const r = getDb()
+    .select()
+    .from(systemVersions)
+    .where(and(eq(systemVersions.systemId, systemId), eq(systemVersions.version, version)))
+    .orderBy(desc(systemVersions.createdAt))
+    .get();
+  if (!r) return null;
+  return {
+    version: r.version,
+    name: r.name,
+    createdAt: r.createdAt,
+    settings: SystemSettingsSchema.parse(JSON.parse(r.settings)),
+    tokens: TokenSetSchema.parse(JSON.parse(r.tokens)),
+  };
+}
+
+/** Systems saved before history existed get their current state as the first entry. */
+export function ensureBaseline(systemId: string) {
+  const rec = getSystem(systemId);
+  if (rec && !listVersions(systemId).length) snapshot(rec);
 }

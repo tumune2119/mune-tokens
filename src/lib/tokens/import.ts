@@ -13,6 +13,7 @@ export function importDtcg(json: unknown): { set: TokenSet; modes: ("light" | "d
   const rootExt = ((root.$extensions as Record<string, unknown> | undefined)?.["mune.tokens"] ?? {}) as Record<string, unknown>;
   const modes = (Array.isArray(rootExt.modes) ? rootExt.modes : ["light", "dark"]).filter((m): m is "light" | "dark" => m === "light" || m === "dark");
   const ramps = new Map<string, Record<string, string>>();
+  const brandRamps = new Map<string, Record<string, string>>();
 
   const toRef = (v: unknown): string | null => {
     if (typeof v !== "string") return null;
@@ -57,6 +58,13 @@ export function importDtcg(json: unknown): { set: TokenSet; modes: ("light" | "d
       if (isPrimitive && typeof value === "string" && isHex(value)) {
         const ramp = path[path.length - 2];
         ramps.set(ramp, { ...(ramps.get(ramp) ?? {}), [last]: value.toLowerCase() });
+        // Per-brand values (MUNE Tokens / Primitives collection modes).
+        const perBrand = (ext.brands ?? {}) as Record<string, unknown>;
+        for (const [brand, hex] of Object.entries(perBrand)) {
+          if (brand === "default" || typeof hex !== "string" || !isHex(hex) || hex.toLowerCase() === value.toLowerCase()) continue;
+          const key = `${brand}|${ramp}`;
+          brandRamps.set(key, { ...(brandRamps.get(key) ?? {}), [last]: hex.toLowerCase() });
+        }
         return;
       }
       const modeVals = (ext.modes ?? {}) as Record<string, unknown>;
@@ -105,6 +113,19 @@ export function importDtcg(json: unknown): { set: TokenSet; modes: ("light" | "d
       else skipped++;
       return;
     }
+    if (type === "duration") {
+      const v = value as { value?: number; unit?: string } | string | number;
+      const ms = typeof v === "object" && v ? (v.unit === "s" ? (v.value ?? 0) * 1000 : (v.value ?? 0)) : typeof v === "string" ? (v.endsWith("s") && !v.endsWith("ms") ? parseFloat(v) * 1000 : parseFloat(v)) : Number(v);
+      if (!Number.isFinite(ms)) return void skipped++;
+      set.motion.durations.push({ name: path[path.length - 1], value: ms });
+      return;
+    }
+    if (type === "cubicBezier") {
+      const v = Array.isArray(value) ? value.map(Number) : [];
+      if (v.length !== 4 || v.some((x) => !Number.isFinite(x))) return void skipped++;
+      set.motion.easings.push({ name: path[path.length - 1], value: [v[0], v[1], v[2], v[3]] });
+      return;
+    }
     if (type === "shadow") {
       const layers = (Array.isArray(value) ? value : [value]) as Record<string, unknown>[];
       const parsed: ShadowLayer[] = [];
@@ -128,6 +149,16 @@ export function importDtcg(json: unknown): { set: TokenSet; modes: ("light" | "d
     const ordered: Record<string, string> = {};
     for (const k of keys) ordered[k] = steps[k];
     set.ramps.push({ name, base, steps: ordered });
+  }
+  // Brands: an overridden ramp keeps the main ramp's other steps, so step sets always match.
+  for (const [key, steps] of brandRamps) {
+    const [brand, rampName] = key.split("|");
+    const main = set.ramps.find((r) => r.name === rampName);
+    if (!main) continue;
+    const full = { ...main.steps, ...steps };
+    let b = set.brands.find((x) => x.name === brand);
+    if (!b) set.brands.push((b = { name: brand, ramps: [] }));
+    b.ramps.push({ name: rampName, base: full["500"] ?? Object.values(full)[Math.floor(Object.keys(full).length / 2)], steps: full });
   }
   if (!set.fonts.length && set.typeScale.length) {
     for (const key of new Set(set.typeScale.map((t) => t.font))) set.fonts.push({ key, family: "Inter", fallback: "system-ui, sans-serif" });

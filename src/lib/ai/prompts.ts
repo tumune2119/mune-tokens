@@ -20,6 +20,8 @@ const SHAPES: Record<string, string> = {
   radius: `"radius": [{ "name": "md", "value": 8 }]   // none, sm, md, lg, xl, full (9999)`,
   shadows: `"shadows": [{ "name": "md", "layers": [{ "x": 0, "y": 4, "blur": 8, "spread": -2, "color": "#0000001a" }] }]   // sm, md, lg, xl; colour as 8-digit hex with alpha`,
   breakpoints: `"breakpoints": [{ "name": "md", "value": 768 }]   // min widths in px`,
+  motion: `"motion": { "durations": [{ "name": "fast", "value": 120 }], "easings": [{ "name": "standard", "value": [0.2, 0, 0, 1] }] }
+  // 4–6 durations in ms (instant, fast, base, slow…) and 3–5 cubic-bezier easings (standard, decelerate, accelerate, emphasized). Match the brand's mood: calm brands move slower and softer.`,
 };
 
 const SCOPE_GROUPS: Record<Scope, string[]> = {
@@ -29,6 +31,7 @@ const SCOPE_GROUPS: Record<Scope, string[]> = {
   radius: ["radius"],
   shadows: ["shadows"],
   breakpoints: ["breakpoints"],
+  motion: ["motion"],
 };
 
 const RULES = `Rules:
@@ -86,6 +89,8 @@ function contextOf(set: TokenSet, group: GroupKey) {
   if (group === "typography") {
     ctx.fonts = set.fonts;
     ctx.typeScale = set.typeScale;
+  } else if (group === "motion") {
+    ctx.motion = set.motion;
   } else if (group !== "ramps" && group !== "semantic") {
     ctx[group] = set[group];
   }

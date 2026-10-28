@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Segmented } from "@/components/system-browser";
-import { nearestStep, restep } from "@/lib/tokens/defaults";
+import { nearestStep, restepSet } from "@/lib/tokens/defaults";
 import type { SystemSettings, TokenSet } from "@/lib/tokens/schema";
 
 /** Per-system settings: brief, ramp steps, modes, contrast target, UI-CONFIG contents, Figma link. */
@@ -61,7 +61,7 @@ function SettingsBody({
         const [root, ramp, step] = ref.split("/");
         return root === "color" && ramp && /^\d+$/.test(step) ? `color/${ramp}/${nearestStep(Number(step), s.steps)}` : ref;
       };
-      next = { ...tokens, ramps: restep(tokens.ramps, s.steps), semantic: tokens.semantic.map((t) => ({ ...t, light: remap(t.light), dark: remap(t.dark) })) };
+      next = { ...restepSet(tokens, s.steps), semantic: tokens.semantic.map((t) => ({ ...t, light: remap(t.light), dark: remap(t.dark) })) };
     }
     onApply({ brief: b, settings: s, tokens: next });
     onClose();

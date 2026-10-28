@@ -18,8 +18,8 @@ const FILES = [
   { file: "UI-CONFIG.md", label: "UI-CONFIG.md", hint: "Give this to the AI that builds the app" },
 ] as const;
 
-export function exportUrl(id: string, page: ExportPage, mode: Mode) {
-  return `${window.location.origin}/export/${id}/${page}?mode=${mode}`;
+export function exportUrl(id: string, page: ExportPage, mode: Mode, brand?: string | null) {
+  return `${window.location.origin}/export/${id}/${page}?mode=${mode}${brand ? `&brand=${encodeURIComponent(brand)}` : ""}`;
 }
 
 /** Records the export; the very first one for a system gets the confetti. */
@@ -30,8 +30,8 @@ export async function logExport(id: string, kind: string) {
   } catch {}
 }
 
-export async function openInBrowser(id: string, page: ExportPage, mode: Mode) {
-  const res = await fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: exportUrl(id, page, mode) }) });
+export async function openInBrowser(id: string, page: ExportPage, mode: Mode, brand?: string | null) {
+  const res = await fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: exportUrl(id, page, mode, brand) }) });
   if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? "Couldn't open the browser");
   logExport(id, `open:${page}`);
 }
@@ -55,6 +55,7 @@ export function ExportTab({
   folder,
   folderError,
   pluginManifest,
+  brands = [],
 }: {
   id: string | null;
   dirty: boolean;
@@ -62,7 +63,11 @@ export function ExportTab({
   folder: string | null;
   folderError: string | null;
   pluginManifest: string | null;
+  /** Extra brand names; pages can be opened per brand. */
+  brands?: string[];
 }) {
+  const [brand, setBrand] = useState<string>("default");
+  const activeBrand = brands.includes(brand) ? brand : null;
   const modes = modesOf(settings);
   const [mode, setMode] = useState<Mode>(modes[0]);
   const activeMode = modes.includes(mode) ? mode : modes[0];
@@ -100,9 +105,14 @@ export function ExportTab({
           title="Export pages"
           description="Clean 1440px pages for html.to.design. Open one in your browser, then capture it with the extension or the Figma plugin."
           actions={
-            modes.length > 1 && (
-              <Segmented value={activeMode} onChange={setMode} options={modes.map((m) => ({ value: m, label: m === "light" ? "Light" : "Dark" }))} />
-            )
+            <>
+              {brands.length > 0 && (
+                <Segmented value={activeBrand ?? "default"} onChange={setBrand} options={["default", ...brands].map((b) => ({ value: b, label: b }))} />
+              )}
+              {modes.length > 1 && (
+                <Segmented value={activeMode} onChange={setMode} options={modes.map((m) => ({ value: m, label: m === "light" ? "Light" : "Dark" }))} />
+              )}
+            </>
           }
         />
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -112,10 +122,11 @@ export function ExportTab({
                 <p className="font-medium">{PAGE_LABELS[page]}</p>
                 <p className="truncate font-mono text-xs text-subtle-foreground">
                   /export/{id}/{page}?mode={activeMode}
+                  {activeBrand && `&brand=${activeBrand}`}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <Button size="sm" onClick={() => run(() => openInBrowser(id, page, activeMode))}>
+                <Button size="sm" onClick={() => run(() => openInBrowser(id, page, activeMode, activeBrand))}>
                   <ExternalLink /> Open in browser
                 </Button>
                 <Button
@@ -123,11 +134,11 @@ export function ExportTab({
                   variant="ghost"
                   aria-label="Copy URL"
                   title="Copy URL"
-                  onClick={() => run(async () => (await navigator.clipboard.writeText(exportUrl(id, page, activeMode)), toast("URL copied")))}
+                  onClick={() => run(async () => (await navigator.clipboard.writeText(exportUrl(id, page, activeMode, activeBrand)), toast("URL copied")))}
                 >
                   <Copy />
                 </Button>
-                <Button size="icon-sm" variant="ghost" aria-label="Download HTML" title="Download HTML" onClick={() => download(`/export/${id}/${page}?mode=${activeMode}&download=1`, `html:${page}`)}>
+                <Button size="icon-sm" variant="ghost" aria-label="Download HTML" title="Download HTML" onClick={() => download(`/export/${id}/${page}?mode=${activeMode}${activeBrand ? `&brand=${activeBrand}` : ""}&download=1`, `html:${page}`)}>
                   <Download />
                 </Button>
               </div>
@@ -139,7 +150,7 @@ export function ExportTab({
             variant="outline"
             size="sm"
             onClick={() => run(async () => {
-              for (const p of EXPORT_PAGES) await openInBrowser(id, p, activeMode);
+              for (const p of EXPORT_PAGES) await openInBrowser(id, p, activeMode, activeBrand);
             })}
           >
             <Layers /> Open all pages ({activeMode})

@@ -141,6 +141,7 @@ function StepEditor({ ramp, step, hex, generated, onChange }: { ramp: Ramp; step
     <Popover>
       <PopoverTrigger asChild>
         <button
+          data-token-item
           className="group flex w-full flex-col overflow-hidden rounded-xl ring-1 ring-white/10 transition-transform hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-white"
           aria-label={`color/${ramp.name}/${step} ${hex}${edited ? ", edited" : ""}`}
         >

@@ -1,7 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { estimateCostUsd } from "./pricing";
-import type { CompletionRequest, CompletionResult } from "./types";
+import { contentBlocks, type CompletionRequest, type CompletionResult } from "./types";
 
 // Models that accept the server-side refusal fallback ("default" routing) on the Claude API.
 const FALLBACK_MODELS = new Set(["claude-sonnet-5-5", "claude-opus-5-5", "claude-opus-5", "claude-fable-5-1"]);
@@ -34,7 +34,7 @@ async function run(req: CompletionRequest, withFallback: boolean): Promise<Compl
       model: req.model,
       max_tokens: 64000,
       system: req.system,
-      messages: [{ role: "user", content: req.user }],
+      messages: [{ role: "user", content: req.media?.length ? contentBlocks(req.user, req.media) : req.user }],
       output_config: { effort: req.effort },
       ...(withFallback ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
     },

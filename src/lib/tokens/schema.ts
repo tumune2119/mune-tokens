@@ -7,7 +7,7 @@ export const STEP_SETS = {
 } as const;
 export type StepSet = keyof typeof STEP_SETS;
 
-export const SCOPES = ["colors", "typography", "spacing", "radius", "shadows", "breakpoints"] as const;
+export const SCOPES = ["colors", "typography", "spacing", "radius", "shadows", "breakpoints", "motion"] as const;
 export type Scope = (typeof SCOPES)[number];
 export const SCOPE_LABELS: Record<Scope, string> = {
   colors: "Colours",
@@ -16,6 +16,7 @@ export const SCOPE_LABELS: Record<Scope, string> = {
   radius: "Radius",
   shadows: "Shadows / effects",
   breakpoints: "Breakpoints",
+  motion: "Motion",
 };
 
 export type ModeSetting = "light" | "dark" | "both";
@@ -97,6 +98,24 @@ export const ShadowLayerSchema = z.object({
 });
 export const ShadowSchema = z.object({ name: segment, layers: z.array(ShadowLayerSchema).min(1).max(6) });
 
+/** Duration in milliseconds. */
+export const DurationSchema = z.object({ name: segment, value: z.coerce.number().min(0).max(10000) });
+/** cubic-bezier(x1, y1, x2, y2); x values must stay within 0–1. */
+export const EasingSchema = z.object({
+  name: segment,
+  value: z.tuple([z.coerce.number().min(0).max(1), z.coerce.number().min(-2).max(3), z.coerce.number().min(0).max(1), z.coerce.number().min(-2).max(3)]),
+});
+export const MotionSchema = z.object({ durations: z.array(DurationSchema).default([]), easings: z.array(EasingSchema).default([]) });
+
+/**
+ * An alternative brand: overrides some ramps' colours; everything else (semantic mapping, type,
+ * spacing) is shared. In Figma each brand is a mode of the Primitives collection.
+ */
+export const BrandSchema = z.object({
+  name: segment.refine((n) => n !== "default", 'reserved for the main brand'),
+  ramps: z.array(RampSchema).default([]),
+});
+
 export const TokenSetSchema = z.object({
   ramps: z.array(RampSchema),
   semantic: z.array(SemanticSchema),
@@ -106,6 +125,9 @@ export const TokenSetSchema = z.object({
   radius: z.array(DimensionSchema),
   shadows: z.array(ShadowSchema),
   breakpoints: z.array(DimensionSchema),
+  // Added after the first release; defaults keep older systems valid.
+  motion: MotionSchema.default({ durations: [], easings: [] }),
+  brands: z.array(BrandSchema).default([]),
 });
 
 export const SystemSettingsSchema = z.object({
@@ -127,8 +149,12 @@ export type ShadowLayer = z.infer<typeof ShadowLayerSchema>;
 export type ShadowToken = z.infer<typeof ShadowSchema>;
 export type TokenSet = z.infer<typeof TokenSetSchema>;
 export type SystemSettings = z.infer<typeof SystemSettingsSchema>;
+export type Duration = z.infer<typeof DurationSchema>;
+export type Easing = z.infer<typeof EasingSchema>;
+export type Motion = z.infer<typeof MotionSchema>;
+export type Brand = z.infer<typeof BrandSchema>;
 
-export type GroupKey = "ramps" | "semantic" | "typography" | "spacing" | "radius" | "shadows" | "breakpoints";
+export type GroupKey = "ramps" | "semantic" | "typography" | "spacing" | "radius" | "shadows" | "breakpoints" | "motion";
 export const GROUP_LABELS: Record<GroupKey, string> = {
   ramps: "Colour ramps",
   semantic: "Semantic colours",
@@ -137,10 +163,11 @@ export const GROUP_LABELS: Record<GroupKey, string> = {
   radius: "Radius",
   shadows: "Shadows",
   breakpoints: "Breakpoints",
+  motion: "Motion",
 };
 
 export function emptyTokenSet(): TokenSet {
-  return { ramps: [], semantic: [], fonts: [], typeScale: [], spacing: [], radius: [], shadows: [], breakpoints: [] };
+  return { ramps: [], semantic: [], fonts: [], typeScale: [], spacing: [], radius: [], shadows: [], breakpoints: [], motion: { durations: [], easings: [] }, brands: [] };
 }
 
 export function modesOf(settings: Pick<SystemSettings, "modes">): Mode[] {
@@ -172,6 +199,16 @@ export function findProblems(set: TokenSet): string[] {
   dup(set.radius, (d) => d.name, "radius token");
   dup(set.shadows, (d) => d.name, "shadow");
   dup(set.breakpoints, (d) => d.name, "breakpoint");
+  dup(set.motion.durations, (d) => d.name, "duration");
+  dup(set.motion.easings, (d) => d.name, "easing");
+  dup(set.brands, (b) => b.name, "brand");
+  for (const b of set.brands) {
+    for (const r of b.ramps) {
+      const main = ramps.get(r.name);
+      if (!main) out.push(`Brand ${b.name}: ramp "${r.name}" doesn't exist in the main brand.`);
+      else if (Object.keys(main.steps).join() !== Object.keys(r.steps).join()) out.push(`Brand ${b.name}: ramp "${r.name}" has different steps; rebuild it.`);
+    }
+  }
 
   const semanticPaths = new Set(set.semantic.map((s) => s.path));
   for (const s of set.semantic) {
@@ -204,6 +241,16 @@ export function countTokens(set: TokenSet): number {
     set.spacing.length +
     set.radius.length +
     set.shadows.length +
-    set.breakpoints.length
+    set.breakpoints.length +
+    set.motion.durations.length +
+    set.motion.easings.length +
+    set.brands.reduce((n, b) => n + b.ramps.reduce((m, r) => m + Object.keys(r.steps).length, 0), 0)
   );
+}
+
+/** The token set as seen with one brand applied (its ramps replace the main ones). */
+export function withBrand(set: TokenSet, brand: string | null | undefined): TokenSet {
+  const b = brand && brand !== "default" ? set.brands.find((x) => x.name === brand) : null;
+  if (!b) return set;
+  return { ...set, ramps: set.ramps.map((r) => b.ramps.find((x) => x.name === r.name) ?? r) };
 }

@@ -201,6 +201,22 @@ function GroupPreview({ group, set, settings }: { group: GroupKey; set: TokenSet
       </div>
     );
   }
+  if (group === "motion") {
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {set.motion.durations.map((d) => (
+          <span key={d.name} className="rounded-md bg-surface-2 px-2 py-1 font-mono text-xs">
+            {d.name}: {d.value}ms
+          </span>
+        ))}
+        {set.motion.easings.map((e) => (
+          <span key={e.name} className="rounded-md bg-surface-2 px-2 py-1 font-mono text-xs">
+            {e.name}: {e.value.join(", ")}
+          </span>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="flex flex-wrap gap-1.5">
       {set[group].map((d) => (

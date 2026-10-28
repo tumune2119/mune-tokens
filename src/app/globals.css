@@ -135,6 +135,14 @@
   animation: mt-shimmer 1.6s linear infinite;
 }
 
+/* J/K keyboard navigation between tokens. */
+[data-token-item]:focus-visible,
+[data-token-item]:focus {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  border-radius: 0.75rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shimmer { animation: none; }
 }

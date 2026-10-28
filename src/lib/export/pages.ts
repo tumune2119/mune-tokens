@@ -1,6 +1,6 @@
 import { contrastRatio, gradeContrast, inkOn, oklchLabel, resolveRef, resolveSemantic } from "../tokens/color";
-import { cssVar, type Mode, type SystemSettings, type TokenSet } from "../tokens/schema";
-import { fontStack, shadowCss } from "./css";
+import { cssVar, withBrand, type Mode, type SystemSettings, type TokenSet } from "../tokens/schema";
+import { bezier, fontStack, shadowCss } from "./css";
 import { componentGridHtml } from "../components/render";
 import { LEVEL_LABELS, type ComponentSpec } from "../components/schema";
 
@@ -27,6 +27,8 @@ export interface PageMeta {
   fontLinks: string[];
   /** Ready components, for the components page. */
   components?: ComponentSpec[];
+  /** Brand to show (its ramps replace the main ones); null = the main brand. */
+  brand?: string | null;
 }
 
 const esc = (s: string) =>
@@ -94,7 +96,7 @@ h2{font-size:24px;line-height:32px;font-weight:600}
 <main class="page">
 <header class="frame" id="header" data-frame="Header">
 <div class="frame-head">
-<p class="muted mono">MUNE Tokens · version ${meta.version} · ${mode === "light" ? "Light" : "Dark"} mode</p>
+<p class="muted mono">MUNE Tokens · version ${meta.version} · ${mode === "light" ? "Light" : "Dark"} mode${meta.brand ? ` · brand ${esc(meta.brand)}` : ""}</p>
 <h1>${esc(meta.name)} — ${esc(title)}</h1>
 </div>
 </header>
@@ -228,6 +230,10 @@ function spacingPage(set: TokenSet, mode: Mode) {
 }
 
 function effectsPage(set: TokenSet, mode: Mode) {
+  return [shadowsFrame(set, mode), motionFrame(set, mode)].filter(Boolean).join("\n");
+}
+
+function shadowsFrame(set: TokenSet, mode: Mode) {
   if (!set.shadows.length) return frame("shadows", "Shadows", "No shadows in this system yet.", "");
   const c = canvasFor(set, mode);
   const cards = set.shadows
@@ -255,7 +261,40 @@ function componentsPage(set: TokenSet, mode: Mode, specs: ComponentSpec[]) {
     .join("\n");
 }
 
-export function renderExportPage(set: TokenSet, page: ExportPage, mode: Mode, meta: PageMeta): string {
+/** Motion, drawn statically (export pages never animate): duration bars and easing curves. */
+function motionFrame(set: TokenSet, mode: Mode) {
+  const { durations, easings } = set.motion;
+  if (!durations.length && !easings.length) return "";
+  const c = canvasFor(set, mode);
+  const accent = resolveSemantic(set, "color/action/primary/default", mode) ?? c.fg;
+  const max = Math.max(1, ...durations.map((d) => d.value));
+  const bars = durations
+    .map(
+      (d) => `<div style="display:flex;gap:24px;align-items:center" data-token="motion/duration/${d.name}" data-value="${d.value}">
+<div class="label" style="width:220px"><span class="name">motion/duration/${d.name}</span><span class="mono muted">${d.value}ms</span></div>
+<div style="width:${Math.max(2, Math.round((d.value / max) * 600))}px;height:12px;background:${accent};border-radius:6px"></div>
+</div>`,
+    )
+    .join("\n");
+  const curves = easings
+    .map((e) => {
+      const [x1, y1, x2, y2] = e.value;
+      // 160×160 plot, y flipped; overshooting curves (y > 1) get headroom.
+      const P = (x: number, y: number) => `${(20 + x * 120).toFixed(1)} ${(140 - y * 120).toFixed(1)}`;
+      return `<div class="swatch" style="width:180px" data-token="motion/easing/${e.name}">
+<svg width="160" height="160" viewBox="0 0 160 160" style="border:1px solid ${c.border};border-radius:12px;overflow:visible">
+<path d="M${P(0, 0)} L${P(1, 1)}" stroke="${c.border}" stroke-dasharray="4 4" fill="none"/>
+<path d="M${P(0, 0)} C${P(x1, y1)} ${P(x2, y2)} ${P(1, 1)}" stroke="${accent}" stroke-width="3" fill="none"/>
+</svg>
+<div class="label"><span class="name">motion/easing/${e.name}</span><span class="mono muted">${esc(bezier(e.value))}</span></div>
+</div>`;
+    })
+    .join("\n");
+  return frame("motion", "Motion", "Durations and easing curves", `<div style="display:flex;flex-direction:column;gap:12px">${bars}</div><div class="row" style="gap:24px">${curves}</div>`);
+}
+
+export function renderExportPage(raw: TokenSet, page: ExportPage, mode: Mode, meta: PageMeta): string {
+  const set = withBrand(raw, meta.brand);
   const body =
     page === "colors"
       ? colorsPage(set, mode)

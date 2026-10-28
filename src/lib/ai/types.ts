@@ -1,8 +1,16 @@
 import type { Effort } from "../types";
 
+/** An image or PDF sent alongside the prompt (base64, no data: prefix). */
+export interface MediaPart {
+  name: string;
+  mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "application/pdf";
+  data: string;
+}
+
 export interface CompletionRequest {
   system: string;
   user: string;
+  media?: MediaPart[];
   model: string;
   effort: Effort;
   signal?: AbortSignal;
@@ -39,4 +47,16 @@ export function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
     cacheWriteTokens: a.cacheWriteTokens + b.cacheWriteTokens,
     costUsd: a.costUsd + b.costUsd,
   };
+}
+
+/** Anthropic content blocks: media first, then the text prompt (works for the API and the CLI's stream-json input). */
+export function contentBlocks(user: string, media: MediaPart[] = []) {
+  return [
+    ...media.map((m) =>
+      m.mediaType === "application/pdf"
+        ? { type: "document" as const, source: { type: "base64" as const, media_type: m.mediaType, data: m.data }, title: m.name }
+        : { type: "image" as const, source: { type: "base64" as const, media_type: m.mediaType, data: m.data } },
+    ),
+    { type: "text" as const, text: user },
+  ];
 }

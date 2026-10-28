@@ -83,7 +83,7 @@ export function TypographyTab({ tokens, update }: { tokens: TokenSet; update: Up
         />
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
           {tokens.fonts.map((f, i) => (
-            <div key={i} className="rounded-2xl border bg-card p-4">
+            <div key={i} className="rounded-2xl border bg-card p-4" data-token-item>
               <div className="flex items-start justify-between gap-3">
                 <p className="truncate text-4xl leading-tight" style={{ fontFamily: stack(f) }}>
                   {f.family}
@@ -162,7 +162,7 @@ export function TypographyTab({ tokens, update }: { tokens: TokenSet; update: Up
               {tokens.typeScale.map((t, i) => {
                 const font = tokens.fonts.find((f) => f.key === t.font);
                 return (
-                  <tr key={i} className="border-b align-middle last:border-0">
+                  <tr key={i} className="border-b align-middle last:border-0" data-token-item>
                     <td className="px-3 py-1.5">
                       <CommitInput
                         value={t.name}
