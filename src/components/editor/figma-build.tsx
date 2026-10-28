@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, CircleAlert, ExternalLink, Loader2, RefreshCw, Sparkles, Square, Terminal } from "lucide-react";
+import { Check, CircleAlert, Copy, ExternalLink, Loader2, RefreshCw, Sparkles, Square, Terminal } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -14,6 +14,7 @@ interface Status {
   state: "connected" | "needs-auth" | "missing" | "no-cli";
   detail: string;
   server: string | null;
+  cli: string | null;
 }
 interface Plan {
   name: string;
@@ -137,6 +138,8 @@ export function FigmaBuild({ id, name, figmaUrl, dirty, onBuilt }: { id: string;
   }
 
   const connected = status?.state === "connected";
+  // `claude` is often not on PATH (e.g. installed only with the VS Code extension), so give the full path.
+  const launch = status?.cli ? `& "${status.cli}"` : "claude";
   return (
     <section>
       <SectionHead
@@ -170,12 +173,25 @@ export function FigmaBuild({ id, name, figmaUrl, dirty, onBuilt }: { id: string;
             </p>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted-foreground">
               <li>
-                Open a terminal (PowerShell) and run <code className="rounded bg-black px-1.5 py-0.5 font-mono text-xs text-foreground">claude</code>
+                Open PowerShell, paste this command and press Enter. It starts Claude Code.
+                <div className="mt-1.5 flex items-center gap-2">
+                  <code className="min-w-0 truncate rounded bg-black px-1.5 py-0.5 font-mono text-xs text-foreground">{launch}</code>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => navigator.clipboard.writeText(launch).then(() => toast.success("Command copied"))}
+                  >
+                    <Copy /> Copy
+                  </Button>
+                </div>
               </li>
               <li>
-                Type <code className="rounded bg-black px-1.5 py-0.5 font-mono text-xs text-foreground">/mcp</code>, choose <span className="text-foreground">{status.server ?? "figma"}</span> and pick Authenticate.
+                Type <code className="rounded bg-black px-1.5 py-0.5 font-mono text-xs text-foreground">/mcp</code> and press Enter, choose <span className="text-foreground">{status.server ?? "figma"}</span> and pick Authenticate.
               </li>
-              <li>Sign in to Figma in the browser window that opens and allow access. Then close Claude Code and click Check again.</li>
+              <li>
+                Sign in to Figma in the browser window that opens and allow access. Back in PowerShell, type{" "}
+                <code className="rounded bg-black px-1.5 py-0.5 font-mono text-xs text-foreground">/exit</code>, then click Check again here.
+              </li>
             </ol>
           </div>
         )}
