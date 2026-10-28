@@ -189,7 +189,7 @@ export function NewSystem({ defaults }: { defaults: SystemSettings }) {
             <p className="text-xs text-subtle-foreground">Unticked groups start from sensible defaults you can edit.</p>
           </fieldset>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="flex flex-wrap gap-x-6 gap-y-4">
             <Field label="Ramp steps">
               <Segmented value={settings.steps} onChange={(v) => set("steps", v)} options={[{ value: "11", label: "50–950" }, { value: "9", label: "100–900" }]} />
             </Field>

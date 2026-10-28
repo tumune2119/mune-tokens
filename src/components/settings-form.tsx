@@ -197,7 +197,7 @@ export function SettingsForm({ initial }: { initial: SettingsStatus }) {
           <h2 className="font-semibold">Defaults for new systems</h2>
           <p className="text-sm text-muted-foreground">Each system can change these in its own settings.</p>
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="flex flex-wrap gap-x-6 gap-y-4">
           <div className="space-y-2">
             <p className="text-sm font-medium">Ramp steps</p>
             <Segmented value={form.defaultSteps} onChange={(v) => set("defaultSteps", v)} options={[{ value: "11", label: "50–950" }, { value: "9", label: "100–900" }]} />

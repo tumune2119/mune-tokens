@@ -79,7 +79,7 @@ function SettingsBody({
             <Textarea id="sys-brief" rows={4} value={b} onChange={(e) => setB(e.target.value)} className="rounded-xl bg-surface-2" />
             <p className="text-xs text-subtle-foreground">Used as context when regenerating groups, and quoted in UI-CONFIG.md.</p>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="flex flex-wrap gap-x-6 gap-y-4">
             <div className="space-y-2">
               <p className="text-sm font-medium">Ramp steps</p>
               <Segmented value={s.steps} onChange={(v) => set("steps", v)} options={[{ value: "11", label: "50–950" }, { value: "9", label: "100–900" }]} />
