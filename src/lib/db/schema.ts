@@ -41,7 +41,7 @@ export const settings = sqliteTable("settings", {
 export const aiUsage = sqliteTable("ai_usage", {
   id: text("id").primaryKey(),
   createdAt: integer("created_at").notNull(),
-  kind: text("kind", { enum: ["system", "regenerate", "test"] }).notNull(),
+  kind: text("kind", { enum: ["system", "regenerate", "inventory", "component", "revise", "test"] }).notNull(),
   provider: text("provider", { enum: ["api", "cli"] }).notNull(),
   model: text("model").notNull(),
   systemId: text("system_id"),
@@ -55,4 +55,28 @@ export const aiUsage = sqliteTable("ai_usage", {
   attempts: integer("attempts").notNull().default(1),
   status: text("status", { enum: ["ok", "error"] }).notNull(),
   error: text("error"),
+});
+
+/** The product idea a component library is planned from (one per system). */
+export const projectIdeas = sqliteTable("project_ideas", {
+  systemId: text("system_id").primaryKey(),
+  idea: text("idea").notNull(),
+  attachments: text("attachments_json").notNull().default("[]"),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/** A component in a system's library; spec_json is a ComponentSpec (null until generated). */
+export const components = sqliteTable("components", {
+  id: text("id").primaryKey(),
+  systemId: text("system_id").notNull(),
+  name: text("name").notNull(),
+  level: text("level", { enum: ["foundation", "primitive", "composite", "product"] }).notNull(),
+  reason: text("reason").notNull().default(""),
+  /** Inventory notes (variants/states the inventory suggested), used to write the spec. */
+  plan: text("plan_json").notNull().default("{}"),
+  spec: text("spec_json"),
+  status: text("status", { enum: ["draft", "ready", "exported"] }).notNull().default("draft"),
+  order: integer("position").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
 });

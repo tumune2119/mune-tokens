@@ -64,6 +64,26 @@ CREATE TABLE IF NOT EXISTS ai_usage (
   error TEXT
 );
 CREATE INDEX IF NOT EXISTS ai_usage_created_idx ON ai_usage(created_at);
+CREATE TABLE IF NOT EXISTS project_ideas (
+  system_id TEXT PRIMARY KEY,
+  idea TEXT NOT NULL,
+  attachments_json TEXT NOT NULL DEFAULT '[]',
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS components (
+  id TEXT PRIMARY KEY,
+  system_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  level TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  plan_json TEXT NOT NULL DEFAULT '{}',
+  spec_json TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',
+  position INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS components_system_idx ON components(system_id);
 `;
 
 function open(): DB {

@@ -8,6 +8,7 @@ import { exportEvents, systems } from "./db/schema";
 import { projectRoot } from "./settings";
 import { checkUiConfig, slugify, writeProjectFiles } from "./project-files";
 import { linkUsageToSystem } from "./usage";
+import { deleteSystemComponents, readyComponents } from "./components/store";
 import { countTokens, SystemSettingsSchema, TokenSetSchema, type SystemSettings, type TokenSet } from "./tokens/schema";
 import { resolveSemantic } from "./tokens/color";
 import type { DashboardStats, SystemRecord, SystemStatus, SystemSummary } from "./types";
@@ -100,7 +101,7 @@ function uniqueSlug(name: string) {
 async function syncFolder(rec: SystemRecord) {
   const folder = path.join(projectRoot(), rec.slug);
   try {
-    const hash = await writeProjectFiles(rec, folder);
+    const hash = await writeProjectFiles(rec, folder, readyComponents(rec.id).map((c) => c.spec!));
     getDb().update(systems).set({ uiConfigHash: hash, folder, folderError: null }).where(eq(systems.id, rec.id)).run();
   } catch (err) {
     getDb()
@@ -176,6 +177,7 @@ export function setStatus(id: string, status: SystemStatus) {
 /** Removes the system from the app. Its project folder on disk is left alone. */
 export function deleteSystem(id: string) {
   getDb().delete(systems).where(eq(systems.id, id)).run();
+  deleteSystemComponents(id);
 }
 
 export function uiConfigState(rec: SystemRecord) {

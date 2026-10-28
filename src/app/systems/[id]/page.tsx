@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getSystem, uiConfigState } from "@/lib/systems";
@@ -27,6 +28,7 @@ export default async function SystemPage({ params }: PageProps<"/systems/[id]">)
         folder: rec.folder,
         folderError: rec.folderError,
         uiConfigEdited: ui.state === "edited",
+        pluginManifest: path.join(/*turbopackIgnore: true*/ process.cwd(), "figma-plugin", "manifest.json"),
       }}
     />
   );

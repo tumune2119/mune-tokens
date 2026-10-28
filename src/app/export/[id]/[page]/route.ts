@@ -3,6 +3,7 @@ import { EXPORT_PAGES, renderExportPage, type ExportPage } from "@/lib/export/pa
 import { fontLinksFor } from "@/lib/export/fonts";
 import { modesOf, type Mode } from "@/lib/tokens/schema";
 import { slugify } from "@/lib/project-files";
+import { readyComponents } from "@/lib/components/store";
 
 /**
  * Standalone export page for html.to.design: /export/<systemId>/<page>?mode=light|dark[&download=1].
@@ -25,6 +26,7 @@ export async function GET(request: Request, ctx: RouteContext<"/export/[id]/[pag
     version: rec.version,
     settings: rec.settings,
     fontLinks: await fontLinksFor(rec.tokens),
+    components: page === "components" ? readyComponents(id).map((c) => c.spec!) : [],
   });
   const headers: Record<string, string> = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" };
   if (url.searchParams.get("download") === "1") {

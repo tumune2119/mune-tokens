@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { getDb } from "./db";
-import { exportEvents, systems } from "./db/schema";
+import { components, exportEvents, projectIdeas, systems } from "./db/schema";
 import { SystemSettingsSchema, TokenSetSchema } from "./tokens/schema";
 
 export const BackupSchema = z.object({
@@ -23,6 +23,25 @@ export const BackupSchema = z.object({
       exportedAt: z.number().nullish(),
     }),
   ),
+  // Added after the first release: optional so older backups still import.
+  ideas: z.array(z.object({ systemId: z.string(), idea: z.string(), attachments: z.string().default("[]"), updatedAt: z.number() })).default([]),
+  components: z
+    .array(
+      z.object({
+        id: z.string(),
+        systemId: z.string(),
+        name: z.string(),
+        level: z.enum(["foundation", "primitive", "composite", "product"]),
+        reason: z.string().default(""),
+        plan: z.string().default("{}"),
+        spec: z.string().nullable(),
+        status: z.enum(["draft", "ready", "exported"]),
+        order: z.number(),
+        createdAt: z.number(),
+        updatedAt: z.number(),
+      }),
+    )
+    .default([]),
 });
 export type BackupFile = z.infer<typeof BackupSchema>;
 
@@ -45,6 +64,8 @@ export function exportAll(): BackupFile {
       updatedAt: r.updatedAt,
       exportedAt: r.exportedAt,
     })),
+    ideas: getDb().select().from(projectIdeas).all(),
+    components: getDb().select().from(components).all(),
   };
 }
 
@@ -55,6 +76,8 @@ export function importBackup(data: BackupFile, mode: "merge" | "replace"): numbe
     if (mode === "replace") {
       tx.delete(systems).run();
       tx.delete(exportEvents).run();
+      tx.delete(components).run();
+      tx.delete(projectIdeas).run();
     }
     const existing = new Set(tx.select({ id: systems.id }).from(systems).all().map((r) => r.id));
     let n = 0;
@@ -76,6 +99,8 @@ export function importBackup(data: BackupFile, mode: "merge" | "replace"): numbe
         })
         .run();
       n++;
+      for (const i of data.ideas.filter((x) => x.systemId === s.id)) tx.insert(projectIdeas).values(i).onConflictDoNothing().run();
+      for (const c of data.components.filter((x) => x.systemId === s.id)) tx.insert(components).values(c).onConflictDoNothing().run();
     }
     return n;
   });

@@ -1,6 +1,7 @@
 import { strToU8, zipSync } from "fflate";
 import { getSystem } from "@/lib/systems";
 import { exportPagesFor, filesFor, slugify } from "@/lib/project-files";
+import { readyComponents } from "@/lib/components/store";
 
 const TYPES: Record<string, string> = {
   "tokens.json": "application/json; charset=utf-8",
@@ -14,11 +15,12 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/export/[id]/[fi
   const { id, file } = await ctx.params;
   const rec = getSystem(id);
   if (!rec) return Response.json({ error: "System not found" }, { status: 404 });
-  const files = filesFor(rec);
+  const components = readyComponents(id).map((c) => c.spec!);
+  const files = filesFor(rec, components);
   const slug = slugify(rec.name);
 
   if (file === "all.zip") {
-    const pages = await exportPagesFor(rec);
+    const pages = await exportPagesFor(rec, components);
     const entries: Record<string, Uint8Array> = {};
     for (const [name, text] of Object.entries(files)) entries[`${slug}/${name}`] = strToU8(text);
     for (const [name, text] of Object.entries(pages)) entries[`${slug}/export/${name}`] = strToU8(text);

@@ -1,6 +1,7 @@
 import { oklchLabel, resolveRef } from "../tokens/color";
 import { cssVar, hexSchema, modesOf, type SystemSettings, type TokenSet } from "../tokens/schema";
 import { fontStack, shadowCss } from "./css";
+import type { ComponentSpec } from "../components/schema";
 
 export interface UiConfigMeta {
   name: string;
@@ -8,6 +9,8 @@ export interface UiConfigMeta {
   date: string;
   settings: SystemSettings;
   brief?: string;
+  /** Ready components (written when the system includes do/don't rules). */
+  components?: ComponentSpec[];
 }
 
 const code = (s: string) => `\`${s}\``;
@@ -109,6 +112,37 @@ export function toUiConfig(set: TokenSet, meta: UiConfigMeta): string {
     out.push(table(["Token", "CSS", "CSS var"], set.shadows.map((s) => [code(`shadow/${s.name}`), code(shadowCss(s)), code(cssVar(`shadow/${s.name}`))])));
   }
   dims("Breakpoints", "breakpoint", set.breakpoints);
+
+  if (rules && meta.components?.length) {
+    out.push("", "## Components", "Build these exactly: same names, parts, variants, states and token bindings as the Figma components.");
+    for (const c of meta.components) {
+      out.push("", `### ${c.name} (${c.level})`);
+      if (c.description) out.push(c.description);
+      const tree = (parent: string | null, depth: number): string[] =>
+        c.anatomy
+          .filter((p) => (p.parent ?? null) === parent)
+          .flatMap((p) => [
+            `${"  ".repeat(depth)}- \`${p.name}\` ${p.kind}${p.direction && p.kind === "container" ? ` (${p.direction})` : ""}${p.icon ? ` icon:${p.icon}` : ""}${p.text ? ` "${p.text}"` : ""}`,
+            ...tree(p.name, depth + 1),
+          ]);
+      out.push("", "Anatomy:", ...tree(null, 0));
+      if (c.props.length) out.push("", `Variants: ${c.props.map((p) => `\`${p.name}\` = ${p.values.join(" | ")}`).join("; ")}`);
+      out.push(`States: ${c.states.join(", ")}`);
+      out.push("", "Token bindings:");
+      for (const r of c.styles) {
+        const when = Object.entries(r.when ?? {}).map(([k, v]) => `${k}=${v}`).join(", ");
+        const set = Object.entries(r.set)
+          .filter(([, v]) => v !== undefined)
+          .map(([k, v]) => `${k} → ${typeof v === "number" ? (k === "opacity" ? v : `${v}px`) : `\`${v}\``}`)
+          .join(", ");
+        out.push(`- \`${r.part}\`${when ? ` [${when}]` : ""}: ${set}`);
+      }
+      const a = c.a11y;
+      const a11y = [a.role && `role ${a.role}`, a.keyboard, a.minTarget ? `min target ${a.minTarget}px` : "", ...a.notes].filter(Boolean);
+      if (a11y.length) out.push("", `Accessibility: ${a11y.join("; ")}`);
+      if (c.content.length) out.push(`Content: ${c.content.join("; ")}`);
+    }
+  }
 
   if (rules) {
     out.push("", "## Do / Don't");

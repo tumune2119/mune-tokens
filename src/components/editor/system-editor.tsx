@@ -18,6 +18,7 @@ import { TypographyTab } from "./typography-tab";
 import { DimensionTab, ShadowsTab } from "./scales-tab";
 import { ExportTab, copyUiConfig, openFolder, openInBrowser } from "./export-tab";
 import { RegenerateDialog } from "./regenerate-dialog";
+import { ComponentsTab } from "@/components/components/components-tab";
 import { SystemSettingsDialog } from "./settings-dialog";
 import { findProblems, type GroupKey, type SystemSettings, type TokenSet } from "@/lib/tokens/schema";
 import { contrastPairs, pairPasses } from "@/lib/tokens/color";
@@ -43,9 +44,11 @@ export interface EditorInitial {
   usageIds?: string[];
   lastCost?: UsageInfo;
   uiConfigEdited?: boolean;
+  /** Absolute path of figma-plugin/manifest.json, shown in the Export tab. */
+  pluginManifest?: string;
 }
 
-type Tab = "colors" | "semantic" | "typography" | "spacing" | "radius" | "shadows" | "breakpoints" | "export";
+type Tab = "colors" | "semantic" | "typography" | "spacing" | "radius" | "shadows" | "breakpoints" | "components" | "export";
 
 const TABS: { value: Tab; label: string; group?: GroupKey; page?: ExportPage }[] = [
   { value: "colors", label: "Colours", group: "ramps", page: "colors" },
@@ -55,6 +58,7 @@ const TABS: { value: Tab; label: string; group?: GroupKey; page?: ExportPage }[]
   { value: "radius", label: "Radius", group: "radius", page: "spacing" },
   { value: "shadows", label: "Shadows", group: "shadows", page: "effects" },
   { value: "breakpoints", label: "Breakpoints", group: "breakpoints", page: "spacing" },
+  { value: "components", label: "Components", page: "components" },
   { value: "export", label: "Export" },
 ];
 
@@ -336,8 +340,11 @@ export function SystemEditor({ initial }: { initial: EditorInitial }) {
           <TabsContent value="breakpoints">
             <DimensionTab kind="breakpoints" tokens={tokens} update={update} />
           </TabsContent>
+          <TabsContent value="components">
+            <ComponentsTab systemId={id} tokens={tokens} settings={settings} dirty={dirty} />
+          </TabsContent>
           <TabsContent value="export">
-            <ExportTab id={id} dirty={dirty} settings={settings} folder={folder} folderError={folderError} />
+            <ExportTab id={id} dirty={dirty} settings={settings} folder={folder} folderError={folderError} pluginManifest={initial.pluginManifest ?? null} />
           </TabsContent>
         </Tabs>
       </div>

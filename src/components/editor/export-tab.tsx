@@ -54,12 +54,14 @@ export function ExportTab({
   settings,
   folder,
   folderError,
+  pluginManifest,
 }: {
   id: string | null;
   dirty: boolean;
   settings: SystemSettings;
   folder: string | null;
   folderError: string | null;
+  pluginManifest: string | null;
 }) {
   const modes = modesOf(settings);
   const [mode, setMode] = useState<Mode>(modes[0]);
@@ -190,19 +192,61 @@ export function ExportTab({
       </section>
 
       <section>
-        <SectionHead title="Into Figma" />
-        <ol className="list-decimal space-y-2 rounded-2xl border bg-card p-5 pl-10 text-sm text-muted-foreground marker:font-mono marker:text-subtle-foreground">
-          <li>
-            <span className="text-foreground">Open in browser</span> — the page opens in your default browser, outside this window.
-          </li>
-          <li>
-            Capture it with the <span className="text-foreground">html.to.design</span> Chrome extension (or paste the URL into the Figma plugin). Do each mode separately.
-          </li>
-          <li>
-            For real Figma <span className="text-foreground">variables</span> (collections, Light/Dark modes, aliases), import <span className="font-mono text-foreground">tokens.json</span>{" "}
-            with a DTCG importer — Tokens Studio&apos;s free tier works today; the MUNE Tokens Importer plugin is planned for v0.2.
-          </li>
-        </ol>
+        <SectionHead
+          title="Into Figma"
+          description="Two routes: the importer plugin creates real variables, styles and components; html.to.design brings in the reference pages."
+          actions={
+            <Button
+              size="sm"
+              onClick={() =>
+                run(async () => {
+                  await navigator.clipboard.writeText(`${window.location.origin}/api/figma/${id}`);
+                  toast("Figma link copied — paste it into the MUNE Tokens Importer plugin.");
+                  logExport(id, "figma-link");
+                })
+              }
+            >
+              <Copy /> Copy Figma link
+            </Button>
+          }
+        />
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div className="rounded-2xl border bg-card p-5">
+            <p className="font-medium">MUNE Tokens Importer plugin</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Variables (Primitives, Semantic with Light/Dark, Dimensions) with aliases, text and effect styles, and Ready components as component sets bound to those variables. Re-running updates in place.</p>
+            <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-sm text-muted-foreground marker:font-mono marker:text-subtle-foreground">
+              <li>
+                One time, in Figma desktop: <span className="text-foreground">Plugins → Development → Import plugin from manifest…</span> and pick
+                {pluginManifest ? (
+                  <button
+                    className="mt-1 block max-w-full truncate rounded-md bg-surface-2 px-2 py-1 text-left font-mono text-[0.7rem] text-foreground hover:bg-surface-3"
+                    title="Copy path"
+                    onClick={() => run(async () => (await navigator.clipboard.writeText(pluginManifest), toast("Path copied")))}
+                  >
+                    {pluginManifest}
+                  </button>
+                ) : (
+                  <span className="font-mono"> figma-plugin\manifest.json</span>
+                )}
+              </li>
+              <li>
+                <span className="text-foreground">Copy Figma link</span> (top right), run the plugin, paste it, Load, Import. Keep MUNE TOKENS running.
+              </li>
+              <li>No connection? Choose <span className="font-mono">tokens.json</span> in the plugin instead (variables and styles only).</li>
+            </ol>
+          </div>
+          <div className="rounded-2xl border bg-card p-5">
+            <p className="font-medium">html.to.design</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Pixel-exact frames of the export pages, for documentation.</p>
+            <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-sm text-muted-foreground marker:font-mono marker:text-subtle-foreground">
+              <li>
+                <span className="text-foreground">Open in browser</span> on a page above — it opens outside this window.
+              </li>
+              <li>Capture it with the html.to.design extension, or paste the URL into its Figma plugin. Do each mode separately.</li>
+              <li>Component cells carry data-component / data-variant in Figma&apos;s variant naming.</li>
+            </ol>
+          </div>
+        </div>
       </section>
     </div>
   );

@@ -1,19 +1,22 @@
 import { contrastRatio, gradeContrast, inkOn, oklchLabel, resolveRef, resolveSemantic } from "../tokens/color";
 import { cssVar, type Mode, type SystemSettings, type TokenSet } from "../tokens/schema";
 import { fontStack, shadowCss } from "./css";
+import { componentGridHtml } from "../components/render";
+import { LEVEL_LABELS, type ComponentSpec } from "../components/schema";
 
 /**
  * Standalone export pages read by html.to.design. Deliberately boring: fixed 1440px width, no JS,
  * no animation, no sticky/hover-only content, one top-level <section> per Figma frame, every token's
  * name in visible text and in data-token (slash paths become Figma groups).
  */
-export const EXPORT_PAGES = ["colors", "typography", "spacing", "effects"] as const;
+export const EXPORT_PAGES = ["colors", "typography", "spacing", "effects", "components"] as const;
 export type ExportPage = (typeof EXPORT_PAGES)[number];
 export const PAGE_LABELS: Record<ExportPage, string> = {
   colors: "Colours",
   typography: "Typography",
   spacing: "Spacing & Radius",
   effects: "Effects",
+  components: "Components",
 };
 
 export interface PageMeta {
@@ -22,6 +25,8 @@ export interface PageMeta {
   settings: SystemSettings;
   /** Google Fonts stylesheet URLs that are known to load (see fonts.ts). */
   fontLinks: string[];
+  /** Ready components, for the components page. */
+  components?: ComponentSpec[];
 }
 
 const esc = (s: string) =>
@@ -70,6 +75,9 @@ body{width:1440px;font-family:${uiFont};font-size:14px;line-height:20px;-webkit-
 .page{display:flex;flex-direction:column;gap:48px;padding:64px}
 .frame{display:flex;flex-direction:column;gap:24px;padding:40px;border:1px solid ${c.border};border-radius:24px;background:${c.surface}}
 .frame-head{display:flex;flex-direction:column;gap:4px}
+/* Component grids can be wider than the page; the frame grows, its heading keeps the page width. */
+.frame.wide{width:max-content;min-width:100%}
+.frame.wide .frame-head{max-width:1232px}
 h1{font-size:40px;line-height:48px;font-weight:700;letter-spacing:-0.02em}
 h2{font-size:24px;line-height:32px;font-weight:600}
 .muted{color:${c.muted}}
@@ -97,8 +105,8 @@ ${body}
 `;
 }
 
-function frame(id: string, title: string, subtitle: string, content: string) {
-  return `<section class="frame" id="${esc(id)}" data-frame="${esc(title)}">
+function frame(id: string, title: string, subtitle: string, content: string, wide = false) {
+  return `<section class="frame${wide ? " wide" : ""}" id="${esc(id)}" data-frame="${esc(title)}">
 <div class="frame-head"><h2>${esc(title)}</h2>${subtitle ? `<p class="muted">${esc(subtitle)}</p>` : ""}</div>
 ${content}
 </section>`;
@@ -233,6 +241,20 @@ function effectsPage(set: TokenSet, mode: Mode) {
   return frame("shadows", "Shadows", "", `<div class="row" style="gap:48px;padding:24px 8px">${cards}</div>`);
 }
 
+function componentsPage(set: TokenSet, mode: Mode, specs: ComponentSpec[]) {
+  if (!specs.length) return frame("components", "Components", "No components marked Ready yet. Plan and mark them Ready in the app's Components tab.", "");
+  const c = canvasFor(set, mode);
+  return specs
+    .map((spec) => {
+      const meta = [LEVEL_LABELS[spec.level], spec.props.map((p) => `${p.name}: ${p.values.join(" / ")}`).join(" · "), `states: ${spec.states.join(" / ")}`]
+        .filter(Boolean)
+        .join(" — ");
+      const id = `component-${spec.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+      return frame(id, spec.name, [spec.description, meta].filter(Boolean).join(" "), componentGridHtml(spec, set, mode, { fg: c.fg, muted: c.muted, border: c.border }), true);
+    })
+    .join("\n");
+}
+
 export function renderExportPage(set: TokenSet, page: ExportPage, mode: Mode, meta: PageMeta): string {
   const body =
     page === "colors"
@@ -241,6 +263,8 @@ export function renderExportPage(set: TokenSet, page: ExportPage, mode: Mode, me
         ? typographyPage(set)
         : page === "spacing"
           ? spacingPage(set, mode)
-          : effectsPage(set, mode);
+          : page === "effects"
+            ? effectsPage(set, mode)
+            : componentsPage(set, mode, meta.components ?? []);
   return shell(PAGE_LABELS[page], meta, mode, set, body);
 }

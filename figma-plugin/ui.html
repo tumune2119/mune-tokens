@@ -1,0 +1,115 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; font: 12px/16px Inter, system-ui, sans-serif; color: var(--figma-color-text, #111); background: var(--figma-color-bg, #fff); }
+  h1 { font-size: 13px; line-height: 20px; margin: 0 0 4px; font-weight: 600; }
+  p { margin: 0 0 12px; color: var(--figma-color-text-secondary, #666); }
+  label.field { display: block; font-weight: 500; margin: 12px 0 6px; }
+  input[type=text] { width: 100%; height: 32px; padding: 0 8px; border: 1px solid var(--figma-color-border, #ddd); border-radius: 6px; background: transparent; color: inherit; font: 11px/16px ui-monospace, Menlo, Consolas, monospace; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  button { height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--figma-color-border, #ddd); background: transparent; color: inherit; font: inherit; font-weight: 500; cursor: pointer; white-space: nowrap; }
+  button.primary { background: var(--figma-color-bg-brand, #0d99ff); border-color: transparent; color: var(--figma-color-text-onbrand, #fff); width: 100%; margin-top: 16px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .checks { display: grid; gap: 6px; margin-top: 8px; }
+  .checks label { display: flex; gap: 8px; align-items: center; }
+  .status { margin-top: 8px; min-height: 16px; color: var(--figma-color-text-secondary, #666); }
+  pre { margin: 12px 0 0; padding: 8px; height: 170px; overflow: auto; border-radius: 6px; background: var(--figma-color-bg-secondary, #f5f5f5); font: 11px/16px ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+  <h1>MUNE Tokens Importer</h1>
+  <p>Creates variables, styles and components from a MUNE TOKENS system. Running it again updates them in place.</p>
+
+  <label class="field" for="url">App link (Export tab → Copy Figma link)</label>
+  <div class="row">
+    <input id="url" type="text" placeholder="http://127.0.0.1:5176/api/figma/…" spellcheck="false">
+    <button id="fetch">Load</button>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <span style="color:var(--figma-color-text-secondary,#666)">or</span>
+    <button id="pick">Choose tokens.json…</button>
+    <input id="file" type="file" accept=".json,application/json" hidden>
+  </div>
+  <div class="status" id="status">Nothing loaded yet.</div>
+
+  <div class="checks">
+    <label><input type="checkbox" id="o-variables" checked> Variables (Primitives, Semantic with modes, Dimensions)</label>
+    <label><input type="checkbox" id="o-text" checked> Text styles</label>
+    <label><input type="checkbox" id="o-effects" checked> Effect styles</label>
+    <label><input type="checkbox" id="o-components" checked> Components (from the app link)</label>
+    <label style="padding-left:22px"><input type="checkbox" id="o-replace"> Replace existing component sets</label>
+  </div>
+
+  <button class="primary" id="run" disabled>Import</button>
+  <pre id="log"></pre>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let payload = null;
+
+  try { $("url").value = localStorage.getItem("mune-url") || ""; } catch (e) {}
+
+  function loaded(data, from) {
+    payload = data;
+    const isApp = data && data.app === "mune-tokens";
+    const n = isApp ? (data.components || []).length : 0;
+    $("status").textContent = isApp
+      ? `Loaded “${data.name}” v${data.version} · ${n} ready component${n === 1 ? "" : "s"} (${from})`
+      : `Loaded tokens.json (${from}) · components need the app link`;
+    $("run").disabled = false;
+  }
+
+  $("fetch").onclick = async () => {
+    const url = $("url").value.trim();
+    if (!url) return;
+    $("status").textContent = "Loading…";
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.status);
+      try { localStorage.setItem("mune-url", url); } catch (e) {}
+      loaded(data, "app");
+    } catch (e) {
+      $("status").textContent = "Couldn't load: " + e.message + ". Is MUNE TOKENS running? Or choose tokens.json instead.";
+    }
+  };
+
+  $("pick").onclick = () => $("file").click();
+  $("file").onchange = async () => {
+    const f = $("file").files[0];
+    if (!f) return;
+    try { loaded(JSON.parse(await f.text()), f.name); } catch (e) { $("status").textContent = "That file isn't valid JSON."; }
+    $("file").value = "";
+  };
+
+  $("run").onclick = () => {
+    if (!payload) return;
+    $("log").textContent = "";
+    $("run").disabled = true;
+    $("run").textContent = "Importing…";
+    parent.postMessage({ pluginMessage: { type: "import", payload, options: {
+      variables: $("o-variables").checked,
+      textStyles: $("o-text").checked,
+      effectStyles: $("o-effects").checked,
+      components: $("o-components").checked,
+      replace: $("o-replace").checked,
+    } } }, "*");
+  };
+
+  onmessage = (e) => {
+    const m = e.data.pluginMessage;
+    if (!m) return;
+    if (m.type === "log") $("log").textContent += m.line + "\n";
+    if (m.type === "done") {
+      $("run").disabled = false;
+      $("run").textContent = "Import";
+      $("log").textContent += m.ok ? "Done.\n" : "Stopped with an error.\n";
+    }
+  };
+</script>
+</body>
+</html>

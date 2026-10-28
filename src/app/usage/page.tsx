@@ -13,6 +13,9 @@ const RANGES = [7, 30, 90] as const;
 const KIND_LABELS: Record<string, string> = {
   system: "New system generation",
   regenerate: "Regenerate group",
+  inventory: "Component inventory",
+  component: "Component spec",
+  revise: "Revise component",
   test: "Connection tests",
 };
 

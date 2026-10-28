@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Figma plugin: plain JS for Figma's sandbox, type-checked with figma-plugin/tsconfig.json.
+    "figma-plugin/**",
   ]),
 ]);
 

@@ -18,6 +18,21 @@ AI is always optional: you can start blank or import a tokens JSON instead. Ever
 
 The model picks only a **base colour** for each ramp. The app then builds the steps in OKLCH so they look evenly spaced, which keeps output short and cheap.
 
+## Components
+
+In a saved system, open the **Components** tab and choose **Plan from project idea**. Describe the product (you can attach a PRD, user flows or a MUNE TASKS plan). Claude then lists the components it needs, grouped as foundations, primitives, composites and product-specific. Each item shows why it's needed, its variants and states, and an estimated cost. Untick what you don't want, then add the rest to the library.
+
+Specs are written **one component per AI call**, so a bad answer only retries that one. Each spec defines:
+
+- **Anatomy:** the named parts.
+- **Variant properties and states.**
+- **Token bindings:** which token each part uses, for each variant and state.
+- **Accessibility and content rules.**
+
+Token names are checked against the system before a spec is accepted.
+
+Each component renders as a full variant × state grid built only from token values. You can **Revise** with AI (you see a preview and its cost before applying), edit the JSON by hand, and set its status: Draft, Ready or Exported. **Ready** components go into `UI-CONFIG.md`, the Components export page and the Figma plugin.
+
 ## Where things live
 
 | What | Where |
@@ -30,9 +45,22 @@ Each save rewrites the project folder with `UI-CONFIG.md`, `tokens.json` (W3C DT
 
 ## Into Figma
 
-1. In a system, go to **Export → Open in browser**. The page opens in your default browser.
-2. Capture it with the html.to.design extension or plugin. Capture each mode separately.
-3. For real Figma variables (collections, Light/Dark modes, aliases), import `tokens.json` with a DTCG importer such as Tokens Studio. The MUNE Tokens Importer plugin is planned for v0.2.
+**MUNE Tokens Importer** is a private development plugin in `figma-plugin/`. It isn't published and costs nothing to run.
+
+1. One time, in Figma desktop: **Plugins → Development → Import plugin from manifest…** and pick `figma-plugin\manifest.json`.
+2. In a system, go to **Export → Copy Figma link**. Run the plugin, paste the link, then click **Load** and **Import**. MUNE TOKENS must be running.
+
+The plugin creates the following, and running it again updates everything in place:
+
+- **Primitives** (hidden from pickers), **Semantic** (Light and Dark modes, aliasing the primitives) and **Dimensions** (space, radius, breakpoints) variable collections.
+- Text styles and effect styles.
+- A component set per Ready component on a **MUNE Components** page. Fills, strokes, padding, gap, radius and size are bound to the variables, and text and shadows use the styles.
+
+If the plugin can't reach the app, choose `tokens.json` in the plugin instead. That imports variables and styles only. If your Figma plan allows only one mode per collection, Dark values go into a separate "Semantic (Dark)" collection.
+
+For pixel-exact reference frames, use **Open in browser** on any export page and capture it with html.to.design. Capture each mode separately.
+
+To type-check the plugin: `npx tsc -p figma-plugin`.
 
 ## Keyboard
 
