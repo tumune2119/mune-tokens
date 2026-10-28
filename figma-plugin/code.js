@@ -371,7 +371,10 @@ function paint(ctx, b) {
  */
 function num(ctx, node, field, b) {
   if (!b || typeof b.value !== "number") return;
-  node[field] = b.value;
+  // width/height are read-only on nodes; they change through resize().
+  if (field === "width") node.resize(b.value, node.height);
+  else if (field === "height") node.resize(node.width, b.value);
+  else node[field] = b.value;
   const v = b.ref ? ctx.vars.get(b.ref) : null;
   if (v) node.setBoundVariable(field, v);
 }
@@ -412,10 +415,7 @@ async function build(ctx, n, parent, inherit, into) {
     if (color && color.value !== "transparent") t.fills = [paint(ctx, color)];
     if (s.opacity) t.opacity = s.opacity.value;
     if (parent) parent.appendChild(t);
-    if (parent && (n.grow || n.kind === "input")) {
-      if (horizontal) t.layoutSizingHorizontal = "FILL";
-      t.textTruncation = "ENDING";
-    }
+    if (n.grow || n.kind === "input") t.textTruncation = "ENDING";
     return t;
   }
 
@@ -440,7 +440,6 @@ async function build(ctx, n, parent, inherit, into) {
     r.fills = c ? [paint(ctx, c)] : [];
     r.resize(horizontal ? 16 : 1, horizontal ? 1 : 16);
     if (parent) parent.appendChild(r);
-    if (parent && horizontal) r.layoutSizingHorizontal = "FILL";
     return r;
   }
 
@@ -470,24 +469,45 @@ async function build(ctx, n, parent, inherit, into) {
     if (st) await f.setEffectStyleIdAsync(st.id);
   }
 
+  // Children are built at their natural (HUG) size first; stretching is decided below, once this
+  // frame's own width is known. (A FILL child inside a HUG parent collapses to 1px in Figma.)
   for (const child of n.children) await build(ctx, child, f, { color: color, font: font });
 
-  // Sizes after children exist, so HUG/FILL resolve correctly.
   if (s.height && typeof s.height.value === "number") {
     f.layoutSizingVertical = "FIXED";
     num(ctx, f, "height", s.height);
   }
-  if (s.width && s.width.value === "fill" && parent) f.layoutSizingHorizontal = "FILL";
-  else if (s.width && typeof s.width.value === "number") {
+  const fill = s.width && s.width.value === "fill";
+  if (fill && !parent) {
+    // A full-width root (a list row, a field): give it a usable width, at least its natural one.
+    const w = Math.max(360, f.width);
+    f.layoutSizingHorizontal = "FIXED";
+    f.resize(w, f.height);
+  } else if (s.width && typeof s.width.value === "number") {
     f.layoutSizingHorizontal = "FIXED";
     num(ctx, f, "width", s.width);
   }
   if (s.minWidth && typeof s.minWidth.value === "number") num(ctx, f, "minWidth", s.minWidth);
-  if ((n.grow || n.kind === "spacer") && parent) {
-    if (horizontal) f.layoutSizingHorizontal = "FILL";
-    else f.layoutSizingVertical = "FILL";
-  }
+
   return f;
+}
+
+/**
+ * Second pass, top-down once the whole tree exists: "fill" / grow / spacer / input / divider parts
+ * stretch, but only inside frames that have a width of their own (not HUG).
+ * @param {SceneNode} node @param {RNode} n
+ */
+function stretch(node, n) {
+  if (!("layoutMode" in node)) return;
+  const f = /** @type {FrameNode} */ (node);
+  n.children.forEach((c, i) => {
+    const k = /** @type {any} */ (f.children[i]);
+    if (!k) return;
+    const wants =
+      (c.style.width && c.style.width.value === "fill") || c.grow || c.kind === "spacer" || c.kind === "input" || (c.kind === "divider" && f.layoutMode === "HORIZONTAL");
+    if (wants && f.layoutSizingHorizontal !== "HUG") k.layoutSizingHorizontal = "FILL";
+    if (c.kind === "container" || c.kind === "spacer") stretch(k, c);
+  });
 }
 
 /** @param {string} name */
@@ -527,6 +547,7 @@ async function importComponents(components, icons, replace) {
       comp.name = v.name;
       page.appendChild(comp);
       await build(ctx, v.tree, null, { color: null, font: null }, comp);
+      stretch(comp, v.tree);
       nodes.push(comp);
     }
     const set = figma.combineAsVariants(nodes, page);
