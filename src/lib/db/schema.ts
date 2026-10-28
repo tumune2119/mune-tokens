@@ -41,7 +41,7 @@ export const settings = sqliteTable("settings", {
 export const aiUsage = sqliteTable("ai_usage", {
   id: text("id").primaryKey(),
   createdAt: integer("created_at").notNull(),
-  kind: text("kind", { enum: ["system", "regenerate", "inventory", "component", "revise", "test"] }).notNull(),
+  kind: text("kind", { enum: ["system", "regenerate", "inventory", "component", "revise", "figma", "test"] }).notNull(),
   provider: text("provider", { enum: ["api", "cli"] }).notNull(),
   model: text("model").notNull(),
   systemId: text("system_id"),

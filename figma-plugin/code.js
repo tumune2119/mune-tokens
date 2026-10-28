@@ -540,9 +540,10 @@ function stretch(node, n) {
   });
 }
 
-/** @param {string} name */
-async function componentsPage(name) {
-  let page = figma.root.children.find((p) => p.name === name);
+/** A page by name; a page with the old name (from earlier versions) is renamed. @param {string} name @param {string} [oldName] */
+async function componentsPage(name, oldName) {
+  let page = figma.root.children.find((p) => p.name === name || (!!oldName && p.name === oldName));
+  if (page) page.name = name;
   if (!page) {
     page = figma.createPage();
     page.name = name;
@@ -560,7 +561,7 @@ async function importComponents(components, icons, replace) {
     return;
   }
   const ctx = await buildContext(icons);
-  const page = await componentsPage("MUNE Components");
+  const page = await componentsPage("Components", "MUNE Components");
   let y = 0;
   for (const node of page.children) y = Math.max(y, node.y + node.height + 120);
   let made = 0;
@@ -623,11 +624,11 @@ async function importComponents(components, icons, replace) {
     made++;
     note("· " + c.name + ": " + nodes.length + " variants");
   }
-  note(`Components: ${made} component set${made === 1 ? "" : "s"} on the “MUNE Components” page`);
+  note(`Components: ${made} component set${made === 1 ? "" : "s"} on the “Components” page`);
 }
 
 // ---------------------------------------------------------------------------
-// Showcase: a "MUNE Design System" page documenting what's in this file. Built from the file's own
+// Showcase: a "Design System" page documenting what's in this file. Built from the file's own
 // variables, styles and components (not the payload), so it also reflects edits made in Figma.
 
 /** @param {string} name @param {"HORIZONTAL" | "VERTICAL"} dir @param {number} gap @param {number} [pad] */
@@ -716,21 +717,16 @@ async function buildShowcase(systemName) {
   const sem = await byCollection("Semantic");
   const dims = await byCollection("Dimensions");
 
-  let page = figma.root.children.find((p) => p.name === "MUNE Design System");
-  if (!page) {
-    page = figma.createPage();
-    page.name = "MUNE Design System";
-  }
-  await page.loadAsync();
-  for (const old of page.children.filter((n) => n.name === "MUNE Design System")) old.remove();
+  const page = await componentsPage("Design System", "MUNE Design System");
+  for (const old of page.children.filter((n) => n.name === "Design System" || n.name === "MUNE Design System")) old.remove();
 
-  const root = stack("MUNE Design System", "VERTICAL", 48, 64);
+  const root = stack("Design System", "VERTICAL", 48, 64);
   root.fills = [varPaint(vars, "color/bg/default", "#fafafa")];
   page.appendChild(root);
 
   // Header
   const header = stack("Header", "VERTICAL", 8);
-  header.appendChild(await label(vars, "MUNE Tokens · design system", 13, 500, "color/text/muted"));
+  header.appendChild(await label(vars, "Design system", 13, 500, "color/text/muted"));
   header.appendChild(await label(vars, systemName, 48, 700));
   header.appendChild(await label(vars, "Every swatch, style and component below is bound to this file's variables and styles.", 16, 400, "color/text/muted"));
   root.appendChild(header);
@@ -909,13 +905,13 @@ async function buildShowcase(systemName) {
     root.appendChild(s);
   }
 
-  // Components — the default variant of each set on the MUNE Components page.
-  const compPage = figma.root.children.find((p) => p.name === "MUNE Components");
+  // Components — the default variant of each set on the Components page.
+  const compPage = figma.root.children.find((p) => p.name === "Components" || p.name === "MUNE Components");
   if (compPage) {
     await compPage.loadAsync();
     const sets = /** @type {ComponentSetNode[]} */ (compPage.children.filter((n) => n.type === "COMPONENT_SET"));
     if (sets.length) {
-      const s = await section(vars, "Components", "Default variant of each component; the full sets live on the MUNE Components page.");
+      const s = await section(vars, "Components", "Default variant of each component; the full sets live on the Components page.");
       const grid = stack("Components", "HORIZONTAL", 32);
       grid.layoutWrap = "WRAP";
       grid.counterAxisSpacing = 32;
@@ -938,7 +934,7 @@ async function buildShowcase(systemName) {
   root.primaryAxisSizingMode = "AUTO";
   root.counterAxisSizingMode = "FIXED";
   root.resize(1440, root.height);
-  note(`Showcase: “MUNE Design System” page (${root.children.length - 1} sections)`);
+  note(`Showcase: “Design System” page (${root.children.length - 1} sections)`);
   return { page: page, root: root };
 }
 
@@ -1102,7 +1098,7 @@ figma.ui.onmessage = async (msg) => {
       await figma.setCurrentPageAsync(page);
     }
     figma.ui.postMessage({ type: "done", ok: true });
-    figma.notify("MUNE Tokens imported");
+    figma.notify("Design system imported");
   } catch (e) {
     note("Error: " + (e instanceof Error ? e.message : String(e)));
     figma.ui.postMessage({ type: "done", ok: false });

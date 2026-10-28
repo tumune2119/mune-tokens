@@ -12,8 +12,11 @@ export interface AppSettings {
   defaultSteps: StepSet;
   defaultContrast: ContrastTarget;
   defaultModes: ModeSetting;
-  /** Where project folders (UI-CONFIG.md, tokens.*) are written. Empty = Documents\MUNE Tokens. */
+  /** Where project folders (UI-CONFIG.md, tokens.*) are written. Empty = Documents\Design Systems. */
   projectRoot: string;
+  /** Figma team/organisation for Build in Figma (from whoami), e.g. team::123. */
+  figmaPlanKey: string;
+  figmaPlanName: string;
 }
 
 export interface SettingsStatus {

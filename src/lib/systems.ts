@@ -271,3 +271,15 @@ export function ensureBaseline(systemId: string) {
   const rec = getSystem(systemId);
   if (rec && !listVersions(systemId).length) snapshot(rec);
 }
+
+/** Remembers the system's Figma file (no new version) and refreshes UI-CONFIG.md, which links it. */
+export async function setFigmaUrl(id: string, url: string) {
+  const rec = getSystem(id);
+  if (!rec || rec.settings.figmaUrl === url) return;
+  getDb()
+    .update(systems)
+    .set({ settings: JSON.stringify({ ...rec.settings, figmaUrl: url }) })
+    .where(eq(systems.id, id))
+    .run();
+  await rewriteFolder(id);
+}

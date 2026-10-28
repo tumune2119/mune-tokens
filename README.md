@@ -52,12 +52,20 @@ Each component renders as a full variant × state grid built only from token val
 | What | Where |
 |---|---|
 | Database | `data\mune-tokens.db` (override with `MUNE_TOKENS_DB_PATH`) |
-| Project folders | `Documents\MUNE Tokens\<system>\` (changeable in Settings) |
+| Project folders | `Documents\Design Systems\<project>\` (changeable in Settings) |
 | Server log (launcher) | `logs\server.log` |
 
 Each save rewrites the project folder with `UI-CONFIG.md`, `tokens.json` (W3C DTCG), `tokens.css`, `tailwind.css` (Tailwind v4) and `export\*.html`. The previous `UI-CONFIG.md` is kept in `.history\`. If you edit `UI-CONFIG.md` by hand, the app notices and asks whether to **keep your edits** (read back in as a new version) or **overwrite** the file.
 
-## Into Figma
+## Build in Figma
+
+Give the system a **Project name** when you create it (or rename it in the editor header). That name is used everywhere: the Figma file, its cover, the project folder and the exports.
+
+In a system, go to **Export → Build in Figma** and click **Create Figma file**. Claude Code creates a new file in your Figma drafts (or the team you pick) named after the project. It adds **Cover**, **Design System** and **Components** pages and imports the variables, styles and Ready components, the same as the plugin below would. Then it checks the result and links the file. **Update Figma file** runs it again on the same file. It runs on your Claude subscription and uses no Figma AI credits.
+
+Before the first build, sign Claude Code in to Figma once: open a terminal, run `claude`, type `/mcp`, choose **plugin:figma:figma** and pick **Authenticate**. Then click **Check again** in the app.
+
+## Into Figma by hand
 
 **MUNE Tokens Importer** is a private development plugin in `figma-plugin/`. It isn't published and costs nothing to run.
 
@@ -68,9 +76,9 @@ The plugin creates the following, and running it again updates everything in pla
 
 - **Primitives** (hidden from pickers), **Semantic** (Light and Dark modes, aliasing the primitives) and **Dimensions** (space, radius, breakpoints) variable collections.
 - Text styles and effect styles.
-- A component set per Ready component on a **MUNE Components** page. Fills, strokes, padding, gap, radius and size are bound to the variables, and text and shadows use the styles.
+- A component set per Ready component on a **Components** page. Fills, strokes, padding, gap, radius and size are bound to the variables, and text and shadows use the styles.
 - With brands: Primitives gets one mode per brand. Motion becomes `motion/duration/*` (number) and `motion/easing/*` (text) variables.
-- A **MUNE Design System** page that documents the whole system:
+- A **Design System** page that documents the whole system:
   - primitives for each brand
   - semantic colours in Light and Dark side by side
   - type samples, spacing, radius, motion and shadows

@@ -1,5 +1,5 @@
 import "server-only";
-import { execFile, spawn } from "node:child_process";
+import { exec, execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -201,4 +201,129 @@ function readResultUsage(msg: Record<string, unknown>, model: string): TokenUsag
   };
   const reported = typeof msg.total_cost_usd === "number" ? msg.total_cost_usd : null;
   return { ...tokens, costUsd: reported ?? estimateCostUsd(model, tokens) ?? 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Agent runs: Claude Code with MCP tools (e.g. the Figma server), used by "Build in Figma".
+
+export type AgentEvent =
+  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
+  | { type: "tool_result"; id: string; isError: boolean; text: string }
+  | { type: "text"; text: string };
+
+export interface AgentRequest {
+  system: string;
+  user: string;
+  model: string;
+  effort: CompletionRequest["effort"];
+  /** Only these tools may run (exact names or "mcp__<server>" for all of a server's tools). */
+  allowedTools: string[];
+  maxTurns: number;
+  signal?: AbortSignal;
+  onEvent?: (e: AgentEvent) => void;
+}
+
+/**
+ * Runs `claude -p` as an agent: built-in tools off, MCP servers from the user's Claude Code setup on,
+ * and only `allowedTools` permitted. Streams tool calls and results to onEvent.
+ */
+export async function runCliAgent(req: AgentRequest, cliPath: string): Promise<{ result: string; isError: boolean; usage: TokenUsage }> {
+  const sysFile = path.join(os.tmpdir(), `mune-tokens-agent-${nanoid(8)}.txt`);
+  fs.writeFileSync(sysFile, req.system, "utf8");
+  const args = [
+    "-p",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--model",
+    req.model,
+    "--effort",
+    req.effort,
+    "--system-prompt-file",
+    sysFile,
+    "--tools",
+    "",
+    "--allowedTools",
+    req.allowedTools.join(","),
+    "--max-turns",
+    String(req.maxTurns),
+    "--no-session-persistence",
+  ];
+  const isShim = /\.(cmd|bat)$/i.test(cliPath);
+  const child = isShim
+    ? spawn(`${quoteForCmd(cliPath)} ${args.map(quoteForCmd).join(" ")}`, { shell: true, cwd: os.tmpdir(), windowsHide: true })
+    : spawn(cliPath, args, { cwd: os.tmpdir(), windowsHide: true });
+  const onAbort = () => child.kill();
+  req.signal?.addEventListener("abort", onAbort, { once: true });
+
+  let result = "";
+  let isError = false;
+  let usage: TokenUsage = ZERO_USAGE;
+  let stderr = "";
+  let buf = "";
+  const handle = (line: string) => {
+    if (!line.trim()) return;
+    let msg: Record<string, unknown>;
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      return;
+    }
+    const content = ((msg.message as { content?: unknown[] } | undefined)?.content ?? []) as Record<string, unknown>[];
+    if (msg.type === "assistant") {
+      for (const c of content) {
+        if (c.type === "tool_use") req.onEvent?.({ type: "tool_use", id: String(c.id), name: String(c.name), input: (c.input ?? {}) as Record<string, unknown> });
+        else if (c.type === "text" && typeof c.text === "string") req.onEvent?.({ type: "text", text: c.text });
+      }
+    } else if (msg.type === "user") {
+      for (const c of content) {
+        if (c.type !== "tool_result") continue;
+        const parts = Array.isArray(c.content) ? (c.content as { type?: string; text?: string }[]) : [{ type: "text", text: String(c.content ?? "") }];
+        req.onEvent?.({ type: "tool_result", id: String(c.tool_use_id), isError: !!c.is_error, text: parts.filter((p) => p.type === "text").map((p) => p.text).join("\n") });
+      }
+    } else if (msg.type === "result") {
+      usage = readResultUsage(msg, req.model);
+      isError = !!msg.is_error;
+      result = String(msg.result ?? msg.subtype ?? "");
+    }
+  };
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk: string) => {
+    buf += chunk;
+    let nl: number;
+    while ((nl = buf.indexOf("\n")) !== -1) {
+      handle(buf.slice(0, nl));
+      buf = buf.slice(nl + 1);
+    }
+  });
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (c: string) => {
+    stderr += c;
+  });
+  child.stdin.on("error", () => {});
+  child.stdin.end(req.user, "utf8");
+  const code = await new Promise<number | null>((resolve, reject) => {
+    child.on("error", reject);
+    child.on("close", resolve);
+  }).finally(() => {
+    req.signal?.removeEventListener("abort", onAbort);
+    fs.rm(sysFile, { force: true }, () => {});
+  });
+  handle(buf);
+  if (req.signal?.aborted) throw new Error("Cancelled.");
+  if (code !== 0 && !result) {
+    const detail = stderr.trim().split(/\r?\n/).slice(-3).join(" ");
+    throw new Error(`Claude Code exited with code ${code}${detail ? `: ${detail}` : ""}`);
+  }
+  return { result, isError, usage };
+}
+
+/** Runs a plain Claude Code command (e.g. `mcp list`) and returns its output. */
+export function runCliCommand(cliPath: string, args: string[], timeoutMs = 45_000): Promise<string> {
+  return new Promise((resolve) => {
+    const isShim = /\.(cmd|bat)$/i.test(cliPath);
+    const done = (err: Error | null, out: string, errOut: string) => resolve(`${out}\n${errOut}`.trim() || (err?.message ?? ""));
+    if (isShim) exec(`${quoteForCmd(cliPath)} ${args.map(quoteForCmd).join(" ")}`, { timeout: timeoutMs, windowsHide: true, cwd: os.tmpdir() }, (e, o, s) => done(e, o, s));
+    else execFile(cliPath, args, { timeout: timeoutMs, windowsHide: true, cwd: os.tmpdir() }, (e, o, s) => done(e, o, s));
+  });
 }

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/kbd";
 import { Segmented } from "@/components/system-browser";
 import { SystemEditor, type EditorInitial } from "@/components/editor/system-editor";
@@ -25,7 +26,9 @@ import { MEDIA_ACCEPT, isMediaFile, readMedia } from "@/lib/client/media";
 const TEXT_EXT = /\.(css|json|md|txt|scss|less|js|ts|svg)$/i;
 
 export function NewSystem({ defaults }: { defaults: SystemSettings }) {
+  const [projectName, setProjectName] = useState("");
   const [brief, setBrief] = useState("");
+  const named = (fallback: string) => projectName.trim() || fallback;
   const [settings, setSettings] = useState<SystemSettings>(defaults);
   const [files, setFiles] = useState<BriefFile[]>([]);
   const [media, setMedia] = useState<MediaPart[]>([]);
@@ -87,7 +90,7 @@ export function NewSystem({ defaults }: { defaults: SystemSettings }) {
     try {
       const { data, usage } = await streamAi<Generation>(
         "/api/ai/generate",
-        { brief, settings, files, media },
+        { brief: projectName.trim() ? `Project: ${projectName.trim()}\n\n${brief}` : brief, settings, files, media },
         {
           onMeta: (label) => setStatus(`Generating with ${label}`),
           onText: (d) => setStreamed((s) => s + d),
@@ -100,7 +103,7 @@ export function NewSystem({ defaults }: { defaults: SystemSettings }) {
         ctrl.signal,
       );
       const tokens = buildTokenSet(data, settings);
-      setDraft({ id: null, name: data.name, brief, settings, tokens, version: 0, usageIds: [usage.id], lastCost: usage });
+      setDraft({ id: null, name: named(data.name), brief, settings, tokens, version: 0, usageIds: [usage.id], lastCost: usage });
       toast(`Generated in ${(usage.durationMs / 1000).toFixed(1)}s · ${costLine(usage)}`);
     } catch (err) {
       const msg = (err as Error).message;
@@ -113,7 +116,7 @@ export function NewSystem({ defaults }: { defaults: SystemSettings }) {
   }
 
   function startBlank() {
-    setDraft({ id: null, name: "Untitled system", brief, settings, tokens: blankTokenSet(settings), version: 0, usageIds: [] });
+    setDraft({ id: null, name: named("Untitled project"), brief, settings, tokens: blankTokenSet(settings), version: 0, usageIds: [] });
   }
 
   async function importJson(file: File | undefined) {
@@ -125,7 +128,7 @@ export function NewSystem({ defaults }: { defaults: SystemSettings }) {
         return;
       }
       const s: SystemSettings = { ...settings, modes: modes.length === 2 ? "both" : modes[0] };
-      setDraft({ id: null, name: name ?? file.name.replace(/\.json$/i, ""), brief, settings: s, tokens: set, version: 0, usageIds: [] });
+      setDraft({ id: null, name: named(name ?? file.name.replace(/\.json$/i, "")), brief, settings: s, tokens: set, version: 0, usageIds: [] });
       if (skipped) toast(`Imported. ${skipped} token${skipped === 1 ? "" : "s"} of unsupported types were skipped.`);
     } catch (err) {
       toast.error(`Couldn't read that file: ${(err as Error).message}`);
@@ -144,10 +147,24 @@ export function NewSystem({ defaults }: { defaults: SystemSettings }) {
 
         <div className="mt-8 space-y-6">
           <div className="space-y-2">
+            <Label htmlFor="project-name">Project name</Label>
+            <Input
+              id="project-name"
+              autoFocus
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              disabled={busy}
+              maxLength={80}
+              placeholder="e.g. Freelancer Budget"
+              className="h-10 rounded-xl bg-surface-2"
+            />
+            <p className="text-xs text-subtle-foreground">Names everything: the Figma file and its pages, the project folder and the exports. Leave empty and Claude suggests one.</p>
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="brief">Brief</Label>
             <Textarea
               id="brief"
-              autoFocus
               value={brief}
               onChange={(e) => setBrief(e.target.value)}
               onKeyDown={(e) => {

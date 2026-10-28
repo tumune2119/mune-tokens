@@ -34,7 +34,7 @@ step("new → start blank");
 await page.goto(`${base}/new`);
 await shot("02-new");
 await page.getByRole("button", { name: "Start blank" }).click();
-await page.getByLabel("System name").fill("E2E Test System");
+await page.getByLabel("Project name").fill("E2E Test System");
 await shot("03-draft");
 
 step("save (Ctrl+S)");

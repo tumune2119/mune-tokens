@@ -16,6 +16,7 @@ const KIND_LABELS: Record<string, string> = {
   inventory: "Component inventory",
   component: "Component spec",
   revise: "Revise component",
+  figma: "Build in Figma",
   test: "Connection tests",
 };
 

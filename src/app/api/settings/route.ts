@@ -34,6 +34,7 @@ const Body = z.object({
 export async function PUT(request: Request) {
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message }, { status: 400 });
-  saveSettings(parsed.data);
+  const current = getSettings();
+  saveSettings({ ...current, ...parsed.data });
   return Response.json(await status());
 }

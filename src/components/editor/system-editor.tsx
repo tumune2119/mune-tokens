@@ -247,7 +247,8 @@ export function SystemEditor({ initial }: { initial: EditorInitial }) {
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            aria-label="System name"
+            aria-label="Project name"
+            placeholder="Project name"
             className="h-9 w-80 rounded-xl border-transparent bg-transparent px-2 text-lg font-semibold hover:border-border focus-visible:bg-surface-2"
           />
           <span className="font-mono text-xs text-subtle-foreground">{id ? `v${version}` : "draft"}</span>
@@ -391,7 +392,17 @@ export function SystemEditor({ initial }: { initial: EditorInitial }) {
             <ComponentsTab systemId={id} tokens={tokens} settings={settings} dirty={dirty} />
           </TabsContent>
           <TabsContent value="export">
-            <ExportTab id={id} dirty={dirty} settings={settings} folder={folder} folderError={folderError} pluginManifest={initial.pluginManifest ?? null} brands={tokens.brands.map((b) => b.name)} />
+            <ExportTab id={id} dirty={dirty} settings={settings} folder={folder} folderError={folderError} pluginManifest={initial.pluginManifest ?? null}
+              brands={tokens.brands.map((b) => b.name)}
+              name={name}
+              figmaUrl={settings.figmaUrl}
+              onReload={async () => {
+                if (!id) return;
+                const res = await fetch(`/api/systems/${id}`);
+                if (res.ok) load(await res.json());
+                router.refresh();
+              }}
+            />
           </TabsContent>
         </Tabs>
       </div>

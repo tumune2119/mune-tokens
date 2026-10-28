@@ -18,6 +18,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultContrast: "AA",
   defaultModes: "both",
   projectRoot: "",
+  figmaPlanKey: "",
+  figmaPlanName: "",
 };
 
 export function getSettings(): AppSettings {
@@ -47,5 +49,5 @@ function documentsDir() {
 }
 
 export function projectRoot(s: AppSettings = getSettings()) {
-  return s.projectRoot.trim() || path.join(documentsDir(), "MUNE Tokens");
+  return s.projectRoot.trim() || path.join(documentsDir(), "Design Systems");
 }

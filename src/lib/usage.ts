@@ -5,7 +5,7 @@ import { getDb } from "./db";
 import { aiUsage } from "./db/schema";
 import type { TokenUsage } from "./ai/types";
 
-export type UsageKind = "system" | "regenerate" | "inventory" | "component" | "revise" | "test";
+export type UsageKind = "system" | "regenerate" | "inventory" | "component" | "revise" | "figma" | "test";
 
 export interface UsageRecordInput {
   kind: UsageKind;

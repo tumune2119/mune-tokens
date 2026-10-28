@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/kbd";
 import { Segmented } from "@/components/system-browser";
 import { SectionHead } from "./controls";
+import { FigmaBuild } from "./figma-build";
 import { EXPORT_PAGES, PAGE_LABELS, type ExportPage } from "@/lib/export/pages";
 import { modesOf, type Mode, type SystemSettings } from "@/lib/tokens/schema";
 import { celebrate } from "@/lib/client/confetti";
@@ -56,6 +57,9 @@ export function ExportTab({
   folderError,
   pluginManifest,
   brands = [],
+  name,
+  figmaUrl,
+  onReload,
 }: {
   id: string | null;
   dirty: boolean;
@@ -65,6 +69,10 @@ export function ExportTab({
   pluginManifest: string | null;
   /** Extra brand names; pages can be opened per brand. */
   brands?: string[];
+  name: string;
+  figmaUrl: string;
+  /** Re-read the saved system (Build in Figma stores the file link). */
+  onReload: () => void;
 }) {
   const [brand, setBrand] = useState<string>("default");
   const activeBrand = brands.includes(brand) ? brand : null;
@@ -202,10 +210,12 @@ export function ExportTab({
         </div>
       </section>
 
+      <FigmaBuild id={id} name={name} figmaUrl={figmaUrl} dirty={dirty} onBuilt={onReload} />
+
       <section>
         <SectionHead
-          title="Into Figma"
-          description="Two routes: the importer plugin creates real variables, styles and components; html.to.design brings in the reference pages."
+          title="Into Figma by hand"
+          description="Or do it yourself: the importer plugin creates the same variables, styles and components; html.to.design brings in the reference pages."
           actions={
             <Button
               size="sm"

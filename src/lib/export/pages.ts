@@ -65,7 +65,6 @@ function shell(title: string, meta: PageMeta, mode: Mode, set: TokenSet, body: s
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=1440">
-<meta name="generator" content="MUNE Tokens">
 <title>${esc(`${meta.name} — ${title} (${mode})`)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -96,7 +95,7 @@ h2{font-size:24px;line-height:32px;font-weight:600}
 <main class="page">
 <header class="frame" id="header" data-frame="Header">
 <div class="frame-head">
-<p class="muted mono">MUNE Tokens · version ${meta.version} · ${mode === "light" ? "Light" : "Dark"} mode${meta.brand ? ` · brand ${esc(meta.brand)}` : ""}</p>
+<p class="muted mono">${esc(meta.name)} · version ${meta.version} · ${mode === "light" ? "Light" : "Dark"} mode${meta.brand ? ` · brand ${esc(meta.brand)}` : ""}</p>
 <h1>${esc(meta.name)} — ${esc(title)}</h1>
 </div>
 </header>

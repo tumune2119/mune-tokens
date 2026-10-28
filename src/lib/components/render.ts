@@ -64,7 +64,7 @@ function resolveDim(set: TokenSet, v: string | number): Bound<number | string> |
   return d ? { ref: v, value: d.value } : undefined;
 }
 
-function resolveValue(set: TokenSet, key: StyleKey, v: string | number, mode: Mode): ResolvedStyle[keyof ResolvedStyle] {
+export function resolveValue(set: TokenSet, key: StyleKey, v: string | number, mode: Mode): ResolvedStyle[keyof ResolvedStyle] {
   if ((COLOR_KEYS as readonly string[]).includes(key)) return typeof v === "string" ? resolveColor(set, v, mode) : undefined;
   if ((DIM_KEYS as readonly string[]).includes(key)) return resolveDim(set, v);
   if (key === "opacity") return typeof v === "number" ? { ref: null, value: v } : undefined;
