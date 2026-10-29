@@ -63,7 +63,9 @@ Give the system a **Project name** when you create it (or rename it in the edito
 
 In a system, go to **Export → Build in Figma** and click **Create Figma file**. Claude Code creates a new file in your Figma drafts (or the team you pick) named after the project. It adds **Cover**, **Design System** and **Components** pages and imports the variables, styles and Ready components, the same as the plugin below would. Then it checks the result and links the file. **Update Figma file** runs it again on the same file. It runs on your Claude subscription and uses no Figma AI credits.
 
-Before the first build, sign Claude Code in to Figma once: open a terminal, run `claude`, type `/mcp`, choose **plugin:figma:figma** and pick **Authenticate**. Then click **Check again** in the app.
+Claude reaches Figma through the **Figma connector** on your Claude account. The card shows which Figma account is connected (name and email) and lets you pick the team under **Create files in**. If it says Figma isn't connected, connect Figma at claude.ai → Settings → Connectors, then click **Check again**.
+
+**Rewrite spec** (Components tab) takes optional notes for Claude, for example "pill shape, add a loading state".
 
 ## Into Figma by hand
 

@@ -2,10 +2,11 @@ import { z } from "zod";
 import { figmaPlans } from "@/lib/figma-auto/run";
 import { getSettings, saveSettings } from "@/lib/settings";
 
-/** Lists the Figma teams the user can create files in (one small Claude call). */
+/** Lists the Figma teams the user can create files in (`?force=1` asks Figma again). */
 export async function GET(request: Request) {
   try {
-    return Response.json({ plans: await figmaPlans(request.signal), selected: getSettings().figmaPlanKey });
+    const force = new URL(request.url).searchParams.get("force") === "1";
+    return Response.json({ plans: await figmaPlans(force), selected: getSettings().figmaPlanKey });
   } catch (err) {
     return Response.json({ error: (err as Error).message }, { status: 400 });
   }

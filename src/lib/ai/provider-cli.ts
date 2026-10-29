@@ -1,5 +1,5 @@
 import "server-only";
-import { exec, execFile, spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -224,8 +224,9 @@ export interface AgentRequest {
 }
 
 /**
- * Runs `claude -p` as an agent: built-in tools off, MCP servers from the user's Claude Code setup on,
- * and only `allowedTools` permitted. Streams tool calls and results to onEvent.
+ * Runs `claude -p` as an agent with the MCP servers and claude.ai connectors from the user's Claude Code
+ * setup. Only `allowedTools` run; in print mode every other tool call is denied. `--tools ""` is not used:
+ * it removes MCP tools as well. Streams tool calls and results to onEvent.
  */
 export async function runCliAgent(req: AgentRequest, cliPath: string): Promise<{ result: string; isError: boolean; usage: TokenUsage }> {
   const sysFile = path.join(os.tmpdir(), `mune-tokens-agent-${nanoid(8)}.txt`);
@@ -241,8 +242,6 @@ export async function runCliAgent(req: AgentRequest, cliPath: string): Promise<{
     req.effort,
     "--system-prompt-file",
     sysFile,
-    "--tools",
-    "",
     "--allowedTools",
     req.allowedTools.join(","),
     "--max-turns",
@@ -250,9 +249,11 @@ export async function runCliAgent(req: AgentRequest, cliPath: string): Promise<{
     "--no-session-persistence",
   ];
   const isShim = /\.(cmd|bat)$/i.test(cliPath);
+  // Load MCP tools up front instead of behind tool search, so allowedTools can name them directly.
+  const env = { ...process.env, ENABLE_TOOL_SEARCH: "false" };
   const child = isShim
-    ? spawn(`${quoteForCmd(cliPath)} ${args.map(quoteForCmd).join(" ")}`, { shell: true, cwd: os.tmpdir(), windowsHide: true })
-    : spawn(cliPath, args, { cwd: os.tmpdir(), windowsHide: true });
+    ? spawn(`${quoteForCmd(cliPath)} ${args.map(quoteForCmd).join(" ")}`, { shell: true, cwd: os.tmpdir(), windowsHide: true, env })
+    : spawn(cliPath, args, { cwd: os.tmpdir(), windowsHide: true, env });
   const onAbort = () => child.kill();
   req.signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -318,12 +319,3 @@ export async function runCliAgent(req: AgentRequest, cliPath: string): Promise<{
   return { result, isError, usage };
 }
 
-/** Runs a plain Claude Code command (e.g. `mcp list`) and returns its output. */
-export function runCliCommand(cliPath: string, args: string[], timeoutMs = 45_000): Promise<string> {
-  return new Promise((resolve) => {
-    const isShim = /\.(cmd|bat)$/i.test(cliPath);
-    const done = (err: Error | null, out: string, errOut: string) => resolve(`${out}\n${errOut}`.trim() || (err?.message ?? ""));
-    if (isShim) exec(`${quoteForCmd(cliPath)} ${args.map(quoteForCmd).join(" ")}`, { timeout: timeoutMs, windowsHide: true, cwd: os.tmpdir() }, (e, o, s) => done(e, o, s));
-    else execFile(cliPath, args, { timeout: timeoutMs, windowsHide: true, cwd: os.tmpdir() }, (e, o, s) => done(e, o, s));
-  });
-}

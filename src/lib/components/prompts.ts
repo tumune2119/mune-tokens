@@ -91,6 +91,8 @@ export function specUserMessage(opts: {
   plan: { usedIn?: string[]; variants?: string[]; states?: string[] };
   idea: string;
   set: TokenSet;
+  /** Optional guidance from the designer; it takes priority over the suggestions above it. */
+  notes?: string;
 }) {
   return `Write the spec for "${opts.name}" (${opts.level}).
 Why it's needed: ${opts.reason || "(not given)"}
@@ -99,7 +101,10 @@ Suggested variants: ${opts.plan.variants?.join(", ") || "(your call)"}
 Suggested states: ${opts.plan.states?.join(", ") || "default, hover, focus, disabled"}
 
 Product idea: ${opts.idea.trim() || "(none)"}
-
+${opts.notes?.trim() ? `
+Designer's notes (follow these; they override the suggestions above):
+${opts.notes.trim()}
+` : ""}
 Tokens you may use:
 ${tokenSummary(opts.set)}`;
 }

@@ -26,7 +26,7 @@
 
   <label class="field" for="url">App link (Export tab → Copy Figma link)</label>
   <div class="row">
-    <input id="url" type="text" placeholder="http://127.0.0.1:5176/api/figma/…" spellcheck="false">
+    <input id="url" type="text" placeholder="http://localhost:5176/api/figma/…" spellcheck="false">
     <button id="fetch">Load</button>
   </div>
   <div class="row" style="margin-top:8px">
@@ -73,7 +73,8 @@
   }
 
   $("fetch").onclick = async () => {
-    const url = $("url").value.trim();
+    // Figma only allows localhost (not 127.0.0.1) in devAllowedDomains.
+    const url = $("url").value.trim().replace("//127.0.0.1:", "//localhost:");
     if (!url) return;
     $("status").textContent = "Loading…";
     try {

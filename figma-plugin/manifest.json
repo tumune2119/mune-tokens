@@ -8,7 +8,7 @@
   "documentAccess": "dynamic-page",
   "networkAccess": {
     "allowedDomains": ["none"],
-    "devAllowedDomains": ["http://127.0.0.1:5176", "http://localhost:5176", "http://127.0.0.1:5177"],
+    "devAllowedDomains": ["http://localhost:5176", "http://localhost:5177"],
     "reasoning": "Reads design tokens and components from the MUNE TOKENS app running on this computer."
   }
 }

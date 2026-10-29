@@ -5,6 +5,9 @@ import { Braces, Check, CircleAlert, Loader2, Plus, Search, Sparkles, Square, Tr
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmButton } from "@/components/confirm-button";
 import { Segmented } from "@/components/system-browser";
@@ -212,7 +215,7 @@ function Library({ systemId, tokens, settings, dirty }: { systemId: string; toke
               tokens={tokens}
               settings={settings}
               queueState={queue.states[current.id]}
-              onWrite={() => queue.enqueue([current.id])}
+              onWrite={(note) => queue.enqueue([current.id], note)}
               onChange={replace}
               onDelete={() => {
                 setItems((list) => (list ?? []).filter((x) => x.id !== current.id));
@@ -245,7 +248,7 @@ function Detail({
   tokens: TokenSet;
   settings: SystemSettings;
   queueState?: string;
-  onWrite: () => void;
+  onWrite: (note?: string) => void;
   onChange: (c: StoredComponentClient) => void;
   onDelete: () => void;
 }) {
@@ -298,10 +301,7 @@ function Detail({
           options={(["draft", "ready", "exported"] as const).map((s) => ({ value: s, label: STATUS_LABEL[s] }))}
         />
         <div className="ml-auto flex items-center gap-1">
-          <Button size="sm" variant="outline" onClick={onWrite} disabled={!!queueState && queueState !== "error"}>
-            {queueState === "writing" ? <Loader2 className="animate-spin" /> : <Sparkles />}
-            {queueState === "writing" ? "Writing…" : queueState === "queued" ? "Queued" : spec ? "Rewrite spec" : "Write spec"}
-          </Button>
+          <WriteSpecButton rewrite={!!spec} queueState={queueState} onWrite={onWrite} />
           {spec && (
             <>
               <Button size="sm" variant="outline" onClick={() => setRevise(true)}>
@@ -432,5 +432,45 @@ function SpecSummary({ spec }: { spec: ComponentSpec }) {
         </ul>
       </div>
     </div>
+  );
+}
+
+/** Write / Rewrite spec, with optional notes to steer Claude. */
+function WriteSpecButton({ rewrite, queueState, onWrite }: { rewrite: boolean; queueState?: string; onWrite: (note?: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const label = rewrite ? "Rewrite spec" : "Write spec";
+  const go = () => {
+    onWrite(note);
+    setOpen(false);
+  };
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button size="sm" variant="outline" disabled={!!queueState && queueState !== "error"}>
+          {queueState === "writing" ? <Loader2 className="animate-spin" /> : <Sparkles />}
+          {queueState === "writing" ? "Writing…" : queueState === "queued" ? "Queued" : label}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 space-y-3 rounded-2xl p-4" align="end">
+        <Label htmlFor="spec-notes">Notes for Claude (optional)</Label>
+        <Textarea
+          id="spec-notes"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) go();
+          }}
+          rows={4}
+          maxLength={4000}
+          placeholder="e.g. Pill shape, only primary and ghost variants, include a loading state, icon on the left."
+          className="resize-none text-sm"
+        />
+        <p className="text-xs text-muted-foreground">{rewrite ? "Replaces the current spec. " : ""}Leave empty to let Claude decide from the plan and your tokens.</p>
+        <Button size="sm" className="w-full" onClick={go}>
+          <Sparkles /> {label}
+        </Button>
+      </PopoverContent>
+    </Popover>
   );
 }

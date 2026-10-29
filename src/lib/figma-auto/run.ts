@@ -1,5 +1,5 @@
 import "server-only";
-import { findClaudeCli, runCliAgent, runCliCommand } from "../ai/provider-cli";
+import { findClaudeCli, runCliAgent } from "../ai/provider-cli";
 import { getSettings } from "../settings";
 import { recordUsage } from "../usage";
 import type { TokenUsage } from "../ai/types";
@@ -8,40 +8,37 @@ import type { SystemRecord } from "../types";
 import { buildScripts } from "./scripts";
 
 /**
- * "Build in Figma": Claude Code (the user's subscription) drives the official Figma MCP server to
- * create the file, add the pages and run the importer scripts. Only the Figma tools are allowed.
+ * "Build in Figma": Claude Code (the user's subscription) drives Figma's MCP server to create the
+ * file, add the pages and run the importer scripts. Only the Figma tools are allowed.
+ *
+ * Headless `claude -p` gets the claude.ai Figma connector; the Claude Code Figma plugin's server is
+ * accepted too where it loads. Whichever answers whoami is used for the build.
  */
+
+const PREFIXES = ["mcp__claude_ai_Figma", "mcp__plugin_figma_figma"];
+const figmaTools = (...names: string[]) => [...names.flatMap((n) => PREFIXES.map((p) => `${p}__${n}`)), "WaitForMcpServers"];
+/** "mcp__claude_ai_Figma__use_figma" → "use_figma". */
+const toolName = (full: string) => full.slice(full.lastIndexOf("__") + 2);
+
+export interface FigmaPlan {
+  name: string;
+  key: string;
+  tier?: string;
+}
+
+export interface FigmaAccount {
+  email: string;
+  handle: string;
+  plans: FigmaPlan[];
+}
 
 export interface FigmaStatus {
   cli: string | null;
-  /** MCP server name as Claude Code lists it, e.g. "plugin:figma:figma". */
-  server: string | null;
-  state: "connected" | "needs-auth" | "missing" | "no-cli";
+  state: "connected" | "needs-auth" | "no-cli";
   detail: string;
-}
-
-/** Tool-name prefix for an MCP server ("plugin:figma:figma" → "mcp__plugin_figma_figma"). */
-const toolPrefix = (server: string) => `mcp__${server.replace(/[^A-Za-z0-9_-]/g, "_")}`;
-
-let statusCache: { at: number; value: FigmaStatus } | null = null;
-
-export async function figmaStatus(force = false): Promise<FigmaStatus> {
-  if (!force && statusCache && Date.now() - statusCache.at < 60_000) return statusCache.value;
-  const cli = await findClaudeCli(getSettings().cliPath);
-  let value: FigmaStatus;
-  if (!cli) {
-    value = { cli: null, server: null, state: "no-cli", detail: "Claude Code CLI not found." };
-  } else {
-    const out = await runCliCommand(cli, ["mcp", "list"]);
-    const lines = out.split(/\r?\n/).filter((l) => /mcp\.figma\.com|figma/i.test(l) && /:\s*https?:\/\//.test(l));
-    const parsed = lines.map((l) => ({ name: l.slice(0, l.search(/:\s*https?:\/\//)).trim(), ok: /connected/i.test(l) && !/needs/i.test(l) }));
-    const best = parsed.find((p) => p.ok) ?? parsed[0];
-    value = best
-      ? { cli, server: best.name, state: best.ok ? "connected" : "needs-auth", detail: best.ok ? `Figma connected (${best.name}).` : `Figma server “${best.name}” needs a one-time sign-in.` }
-      : { cli, server: null, state: "missing", detail: "No Figma MCP server in Claude Code. Install the Figma plugin for Claude Code, or add Figma's MCP server." };
-  }
-  statusCache = { at: Date.now(), value };
-  return value;
+  account: FigmaAccount | null;
+  /** Tool-name prefix of the server that answered, e.g. "mcp__claude_ai_Figma". */
+  prefix: string | null;
 }
 
 function track(model: string, usage: TokenUsage, started: number, ok: boolean, error: string | null, rec?: SystemRecord) {
@@ -59,45 +56,81 @@ function track(model: string, usage: TokenUsage, started: number, ok: boolean, e
   });
 }
 
-async function connected() {
-  const s = await figmaStatus();
-  if (s.state !== "connected" || !s.cli || !s.server) throw new Error(s.detail);
-  return { cli: s.cli, prefix: toolPrefix(s.server) };
+let statusCache: { at: number; value: FigmaStatus } | null = null;
+let statusRun: Promise<FigmaStatus> | null = null;
+
+/**
+ * Is Figma reachable from Claude Code, and as whom? One small whoami call (cached 10 minutes; `force`
+ * re-checks). Returns the signed-in Figma account and the teams it can create files in.
+ */
+export async function figmaStatus(force = false): Promise<FigmaStatus> {
+  if (!force && statusCache && Date.now() - statusCache.at < 10 * 60_000) return statusCache.value;
+  statusRun ??= checkFigma().finally(() => (statusRun = null));
+  const value = await statusRun;
+  statusCache = { at: Date.now(), value };
+  return value;
 }
 
-export interface FigmaPlan {
-  name: string;
-  key: string;
-  tier?: string;
-}
-
-/** The Figma teams/organisations the user can create files in (one whoami call). */
-export async function figmaPlans(signal?: AbortSignal): Promise<FigmaPlan[]> {
-  const { cli, prefix } = await connected();
+async function checkFigma(): Promise<FigmaStatus> {
   const settings = getSettings();
+  const cli = await findClaudeCli(settings.cliPath);
+  if (!cli) return { cli: null, state: "no-cli", detail: "Claude Code CLI not found.", account: null, prefix: null };
+
   let raw = "";
+  let prefix: string | null = null;
+  const ids = new Map<string, string>();
   const started = Date.now();
   const res = await runCliAgent(
     {
-      system: "Call the whoami tool exactly once, then reply with the single word DONE.",
-      user: `Call ${prefix}__whoami.`,
+      system:
+        "Call the Figma whoami tool exactly once (it is named mcp__claude_ai_Figma__whoami or mcp__plugin_figma_figma__whoami; use whichever exists, and wait for MCP servers first if Figma is still connecting). Then reply DONE. If no Figma tool exists, reply NOFIGMA.",
+      user: "Check the Figma connection.",
       model: settings.model,
       effort: "low",
-      allowedTools: [`${prefix}__whoami`],
-      maxTurns: 3,
-      signal,
+      allowedTools: figmaTools("whoami"),
+      maxTurns: 4,
       onEvent: (e) => {
-        if (e.type === "tool_result" && !e.isError) raw = e.text;
+        if (e.type === "tool_use" && toolName(e.name) === "whoami") ids.set(e.id, e.name.slice(0, e.name.lastIndexOf("__")));
+        if (e.type === "tool_result" && !e.isError && ids.has(e.id)) {
+          raw = e.text;
+          prefix = ids.get(e.id)!;
+        }
       },
     },
     cli,
   );
   track(settings.model, res.usage, started, !!raw, raw ? null : res.result);
-  const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
-  const data = JSON.parse(json || "{}") as { whoami?: { plans?: { name: string; key: string; tier?: string }[] }; plans?: FigmaPlan[] };
-  const plans = data.whoami?.plans ?? data.plans ?? [];
-  if (!plans.length) throw new Error("Figma returned no teams for this account.");
-  return plans.map((p) => ({ name: p.name, key: p.key, tier: p.tier }));
+
+  let data: { whoami?: { email?: string; handle?: string; plans?: FigmaPlan[] } } = {};
+  try {
+    data = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
+  } catch {}
+  const who = data.whoami;
+  if (!who) {
+    return {
+      cli,
+      state: "needs-auth",
+      detail: raw ? `Figma answered, but not as expected: ${raw.slice(0, 160)}` : "Figma isn't connected to your Claude account yet.",
+      account: null,
+      prefix: null,
+    };
+  }
+  const plans = (who.plans ?? []).map((p) => ({ name: p.name, key: p.key, tier: p.tier }));
+  return { cli, state: "connected", detail: "Figma connected", account: { email: who.email ?? "", handle: who.handle ?? "", plans }, prefix };
+}
+
+async function connected() {
+  const s = await figmaStatus();
+  if (s.state !== "connected" || !s.cli || !s.prefix) throw new Error(s.detail);
+  return { cli: s.cli, prefix: s.prefix };
+}
+
+/** The Figma teams the user can create files in. */
+export async function figmaPlans(force = false): Promise<FigmaPlan[]> {
+  const s = await figmaStatus(force);
+  if (s.state !== "connected" || !s.account) throw new Error(s.detail);
+  if (!s.account.plans.length) throw new Error("Figma returned no teams for this account.");
+  return s.account.plans;
 }
 
 export type BuildEvent =
@@ -169,12 +202,12 @@ export async function buildInFigma(
       user,
       model: settings.model,
       effort: "low",
-      allowedTools: [`${prefix}__create_new_file`, `${prefix}__create_session`, `${prefix}__use_figma`],
+      allowedTools: figmaTools("create_new_file", "create_session", "use_figma"),
       maxTurns: steps.length * 2 + 4,
       signal: opts.signal,
       onEvent: (e) => {
         if (e.type === "tool_use") {
-          const tool = e.name.slice(prefix.length + 2);
+          const tool = toolName(e.name);
           let index = setupNames.indexOf(tool);
           if (tool === "use_figma") index = setupNames.length + plan.scripts.findIndex((s) => s.label === e.input.description);
           if (index < 0) return;
@@ -200,7 +233,7 @@ export async function buildInFigma(
             if (fileKey) opts.onEvent({ type: "file", fileKey, fileUrl });
           }
           if (steps[index] === "Check") check = data;
-          const log = Array.isArray(data.log) ? (data.log as string[]).join(" · ") : undefined;
+          const log = Array.isArray(data.log) ? (data.log as string[]).map((l) => l.replace(/^[\s·]+/, "")).filter(Boolean).join(" · ") : undefined;
           opts.onEvent({ type: "step", index, state: "ok", note: log });
         }
       },

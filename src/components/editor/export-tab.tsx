@@ -221,7 +221,7 @@ export function ExportTab({
               size="sm"
               onClick={() =>
                 run(async () => {
-                  await navigator.clipboard.writeText(`${window.location.origin}/api/figma/${id}`);
+                  await navigator.clipboard.writeText(`${window.location.origin.replace("//127.0.0.1", "//localhost")}/api/figma/${id}`);
                   toast("Figma link copied — paste it into the MUNE Tokens Importer plugin.");
                   logExport(id, "figma-link");
                 })

@@ -4,7 +4,7 @@ import { specSystemPrompt, specUserMessage } from "@/lib/components/prompts";
 import { specSchemaFor, type ComponentSpec } from "@/lib/components/schema";
 import { getComponent, getIdea, updateComponent } from "@/lib/components/store";
 import { getSystem } from "@/lib/systems";
-import type { z } from "zod";
+import { z } from "zod";
 
 /**
  * Step 2b: writes one component's spec (one call per component, so a bad answer only retries
@@ -17,11 +17,13 @@ export async function POST(request: Request, ctx: RouteContext<"/api/systems/[id
   const comp = rec && getComponent(id, cid);
   if (!rec || !comp) return Response.json({ error: "Component not found" }, { status: 404 });
   const idea = getIdea(id)?.idea ?? "";
+  const body = await request.json().catch(() => null);
+  const notes = z.object({ notes: z.string().max(4000) }).safeParse(body).data?.notes ?? "";
 
   return streamAiJob(request, async ({ provider, signal, onText, onRetry }) => {
     const { data, usage } = await generateStructured({
       system: specSystemPrompt(),
-      user: specUserMessage({ name: comp.name, level: comp.level, reason: comp.reason, plan: comp.plan, idea, set: rec.tokens }),
+      user: specUserMessage({ name: comp.name, level: comp.level, reason: comp.reason, plan: comp.plan, idea, set: rec.tokens, notes }),
       schema: specSchemaFor(rec.tokens) as unknown as z.ZodType<ComponentSpec>,
       track: { kind: "component", systemId: id, systemName: rec.name },
       provider,

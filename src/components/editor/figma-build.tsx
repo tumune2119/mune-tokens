@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, CircleAlert, Copy, ExternalLink, Loader2, RefreshCw, Sparkles, Square, Terminal } from "lucide-react";
-import { toast } from "sonner";
+import { Check, CircleAlert, ExternalLink, Loader2, Plug, RefreshCw, Sparkles, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SectionHead } from "./controls";
@@ -10,18 +9,23 @@ import { formatDuration, formatUsd } from "@/lib/format";
 import { celebrate } from "@/lib/client/confetti";
 import { cn } from "@/lib/utils";
 
-interface Status {
-  state: "connected" | "needs-auth" | "missing" | "no-cli";
-  detail: string;
-  server: string | null;
-  cli: string | null;
-}
 interface Plan {
   name: string;
   key: string;
   tier?: string;
 }
+interface Status {
+  state: "connected" | "needs-auth" | "no-cli";
+  detail: string;
+  account: { email: string; handle: string; plans: Plan[] } | null;
+}
 type StepState = "waiting" | "running" | "ok" | "error";
+
+/** Default team: the user's own (named after them), else a paid one, else the first. */
+function defaultPlan(account: NonNullable<Status["account"]>) {
+  const { plans, handle } = account;
+  return plans.find((p) => p.name === handle) ?? plans.find((p) => p.tier && p.tier !== "starter") ?? plans[0];
+}
 
 /**
  * "Build in Figma": Claude Code (your subscription) creates the project's Figma file — Cover,
@@ -29,10 +33,7 @@ type StepState = "waiting" | "running" | "ok" | "error";
  */
 export function FigmaBuild({ id, name, figmaUrl, dirty, onBuilt }: { id: string; name: string; figmaUrl: string; dirty: boolean; onBuilt: () => void }) {
   const [status, setStatus] = useState<Status | null>(null);
-  const [plans, setPlans] = useState<Plan[] | null>(null);
   const [planKey, setPlanKey] = useState("");
-  const [planName, setPlanName] = useState("");
-  const [loadingPlans, setLoadingPlans] = useState(false);
   const [steps, setSteps] = useState<{ label: string; state: StepState; note?: string }[]>([]);
   const [running, setRunning] = useState(false);
   const [started, setStarted] = useState(0);
@@ -40,29 +41,27 @@ export function FigmaBuild({ id, name, figmaUrl, dirty, onBuilt }: { id: string;
   const [result, setResult] = useState<{ fileUrl: string; problems: string[]; costUsd: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const plans = status?.account?.plans ?? [];
 
   const check = async (force = false) => {
     setStatus(null);
-    const s = await fetch(`/api/figma/status${force ? "?force=1" : ""}`).then((r) => r.json());
+    const [s, saved] = await Promise.all([
+      fetch(`/api/figma/status${force ? "?force=1" : ""}`).then((r) => r.json() as Promise<Status>),
+      fetch("/api/settings").then((r) => r.json()),
+    ]);
     setStatus(s);
+    const key: string = saved.settings.figmaPlanKey ?? "";
+    if (s.account && !s.account.plans.some((p) => p.key === key)) {
+      const p = defaultPlan(s.account);
+      if (p) choose(p);
+    } else setPlanKey(key);
   };
 
   useEffect(() => {
-    let live = true;
-    fetch("/api/figma/status")
-      .then((r) => r.json())
-      .then((s) => live && setStatus(s));
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((s) => {
-        if (!live) return;
-        setPlanKey(s.settings.figmaPlanKey ?? "");
-        setPlanName(s.settings.figmaPlanName ?? "");
-      });
-    return () => {
-      live = false;
-    };
-  }, []);
+    // Runs once on mount; check() only sets state after its fetches resolve.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    check();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!running) return;
@@ -70,24 +69,8 @@ export function FigmaBuild({ id, name, figmaUrl, dirty, onBuilt }: { id: string;
     return () => clearInterval(t);
   }, [running]);
 
-  async function loadPlans() {
-    setLoadingPlans(true);
-    try {
-      const res = await fetch("/api/figma/plans");
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setPlans(data.plans);
-      if (!planKey && data.plans.length === 1) choose(data.plans[0]);
-    } catch (err) {
-      toast.error((err as Error).message);
-    } finally {
-      setLoadingPlans(false);
-    }
-  }
-
   function choose(p: Plan) {
     setPlanKey(p.key);
-    setPlanName(p.name);
     fetch("/api/figma/plans", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: p.key, name: p.name }) });
   }
 
@@ -138,8 +121,7 @@ export function FigmaBuild({ id, name, figmaUrl, dirty, onBuilt }: { id: string;
   }
 
   const connected = status?.state === "connected";
-  // `claude` is often not on PATH (e.g. installed only with the VS Code extension), so give the full path.
-  const launch = status?.cli ? `& "${status.cli}"` : "claude";
+  const account = status?.account;
   return (
     <section>
       <SectionHead
@@ -150,11 +132,12 @@ export function FigmaBuild({ id, name, figmaUrl, dirty, onBuilt }: { id: string;
         <div className="flex flex-wrap items-center gap-3 text-sm">
           {!status ? (
             <span className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> Checking the Figma connection…
+              <Loader2 className="size-4 animate-spin" /> Checking the Figma connection… (a few seconds)
             </span>
-          ) : connected ? (
-            <span className="flex items-center gap-2">
-              <Check className="size-4" /> Figma connected
+          ) : connected && account ? (
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <Check className="size-4" /> Figma connected as <span className="font-medium">{account.handle}</span>
+              {account.email && <span className="font-mono text-xs text-muted-foreground">{account.email}</span>}
             </span>
           ) : (
             <span className="flex items-center gap-2">
@@ -169,29 +152,18 @@ export function FigmaBuild({ id, name, figmaUrl, dirty, onBuilt }: { id: string;
         {status?.state === "needs-auth" && (
           <div className="rounded-xl bg-surface-2 p-4 text-sm">
             <p className="flex items-center gap-2 font-medium">
-              <Terminal className="size-4" /> One-time Figma sign-in
+              <Plug className="size-4" /> One-time Figma connection
             </p>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted-foreground">
               <li>
-                Open PowerShell, paste this command and press Enter. It starts Claude Code.
-                <div className="mt-1.5 flex items-center gap-2">
-                  <code className="min-w-0 truncate rounded bg-black px-1.5 py-0.5 font-mono text-xs text-foreground">{launch}</code>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => navigator.clipboard.writeText(launch).then(() => toast.success("Command copied"))}
-                  >
-                    <Copy /> Copy
-                  </Button>
-                </div>
+                Open{" "}
+                <a href="https://claude.ai/settings/connectors" target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-4">
+                  claude.ai → Settings → Connectors
+                </a>{" "}
+                (signed in with the same Claude account as Claude Code).
               </li>
-              <li>
-                Type <code className="rounded bg-black px-1.5 py-0.5 font-mono text-xs text-foreground">/mcp</code> and press Enter, choose <span className="text-foreground">{status.server ?? "figma"}</span> and pick Authenticate.
-              </li>
-              <li>
-                Sign in to Figma in the browser window that opens and allow access. Back in PowerShell, type{" "}
-                <code className="rounded bg-black px-1.5 py-0.5 font-mono text-xs text-foreground">/exit</code>, then click Check again here.
-              </li>
+              <li>Find <span className="text-foreground">Figma</span>, click Connect, sign in to Figma and allow access.</li>
+              <li>Come back and click Check again.</li>
             </ol>
           </div>
         )}
@@ -199,10 +171,10 @@ export function FigmaBuild({ id, name, figmaUrl, dirty, onBuilt }: { id: string;
         {connected && (
           <>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm text-muted-foreground">Team</span>
-              {plans ? (
-                <Select value={planKey} onValueChange={(k) => choose(plans.find((p) => p.key === k)!)}>
-                  <SelectTrigger size="sm" className="h-8 w-64 rounded-lg" aria-label="Figma team">
+              <span className="text-sm text-muted-foreground">Create files in</span>
+              {plans.length ? (
+                <Select value={planKey} onValueChange={(k) => choose(plans.find((p) => p.key === k)!)} disabled={running}>
+                  <SelectTrigger size="sm" className="h-8 w-72 rounded-lg" aria-label="Figma team">
                     <SelectValue placeholder="Choose a team" />
                   </SelectTrigger>
                   <SelectContent>
@@ -215,12 +187,7 @@ export function FigmaBuild({ id, name, figmaUrl, dirty, onBuilt }: { id: string;
                   </SelectContent>
                 </Select>
               ) : (
-                <>
-                  <span className="text-sm">{planName || "not chosen"}</span>
-                  <Button size="sm" variant="outline" onClick={loadPlans} disabled={loadingPlans || running}>
-                    {loadingPlans ? <Loader2 className="animate-spin" /> : null} {planName ? "Change" : "Choose team"}
-                  </Button>
-                </>
+                <span className="text-sm">Figma returned no teams for this account.</span>
               )}
             </div>
 

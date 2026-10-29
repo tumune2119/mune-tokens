@@ -15,6 +15,7 @@ export function useSpecQueue(systemId: string, onDone: (c: StoredComponentClient
   const [states, setStates] = useState<Record<string, QueueState>>({});
   const [spent, setSpent] = useState(0);
   const queue = useRef<string[]>([]);
+  const notes = useRef(new Map<string, string>());
   const running = useRef(false);
   const abort = useRef<AbortController | null>(null);
 
@@ -27,7 +28,8 @@ export function useSpecQueue(systemId: string, onDone: (c: StoredComponentClient
       const ctrl = new AbortController();
       abort.current = ctrl;
       try {
-        const { data, usage } = await streamAi<StoredComponentClient>(`/api/systems/${systemId}/components/${id}/generate`, {}, {}, ctrl.signal);
+        const { data, usage } = await streamAi<StoredComponentClient>(`/api/systems/${systemId}/components/${id}/generate`, { notes: notes.current.get(id) ?? "" }, {}, ctrl.signal);
+        notes.current.delete(id);
         setSpent((n) => n + usage.costUsd);
         setStates((s) => {
           const next = { ...s };
@@ -50,7 +52,9 @@ export function useSpecQueue(systemId: string, onDone: (c: StoredComponentClient
   }, [systemId, onDone]);
 
   const enqueue = useCallback(
-    (ids: string[]) => {
+    /** `note` is optional guidance from the designer, used for these components. */
+    (ids: string[], note?: string) => {
+      if (note?.trim()) for (const id of ids) notes.current.set(id, note.trim());
       const fresh = ids.filter((id) => !queue.current.includes(id));
       queue.current.push(...fresh);
       setStates((s) => ({ ...s, ...Object.fromEntries(fresh.map((id) => [id, "queued" as const])) }));
