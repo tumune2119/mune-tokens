@@ -2,6 +2,7 @@ import { oklchLabel, resolveRef } from "../tokens/color";
 import { cssVar, hexSchema, modesOf, type SystemSettings, type TokenSet } from "../tokens/schema";
 import { bezier, fontStack, shadowCss } from "./css";
 import type { ComponentSpec } from "../components/schema";
+import { AI_TELLS, styleById } from "../styles";
 
 export interface UiConfigMeta {
   name: string;
@@ -43,6 +44,15 @@ export function toUiConfig(set: TokenSet, meta: UiConfigMeta): string {
     "- Stack hint: Tailwind v4 — import tailwind.css; or plain CSS — import tokens.css.",
     "- Token names map one-to-one: `color/bg/default` ↔ `--color-bg-default` ↔ Figma variable `color/bg/default`.",
   );
+
+  const styles = (meta.settings.style ?? []).map(styleById).filter((s) => !!s);
+  if (rules && styles.length) {
+    out.push("", "## Visual style");
+    out.push(styles.length > 1 ? `${styles[0].name} as the base, with ${styles[1].name} as the accent layer.` : `${styles[0].name}: ${styles[0].blurb}`);
+    for (const s of styles) {
+      out.push("", `### ${s.name}`, `- Components: ${s.components}`, `- Motion: ${s.motion}`, `- Avoid: ${s.avoid}`);
+    }
+  }
 
   if (set.semantic.length) {
     out.push("", "## Colour — semantic");
@@ -176,6 +186,10 @@ export function toUiConfig(set: TokenSet, meta: UiConfigMeta): string {
       "- Don't use colour as the only signal for state; pair it with an icon or text.",
       "- Don't reference primitives (`color/<ramp>/<step>`) directly in components.",
     );
+    if (meta.settings.distinctive !== false) {
+      out.push("", "## Avoid the generic AI look", styles.length ? "The visual style above wins where it overlaps with these." : "These are the common tells of AI-made UI.");
+      out.push(...AI_TELLS.product.map((r) => `- ${r}`));
+    }
   }
 
   out.push("", "## Figma");

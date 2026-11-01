@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Segmented } from "@/components/system-browser";
+import { StylePicker } from "@/components/style-picker";
 import { nearestStep, restepSet } from "@/lib/tokens/defaults";
 import type { SystemSettings, TokenSet } from "@/lib/tokens/schema";
 
@@ -28,7 +29,7 @@ export function SystemSettingsDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="rounded-2xl sm:max-w-xl">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto rounded-2xl sm:max-w-xl">
         {open && <SettingsBody brief={brief} settings={settings} tokens={tokens} onApply={onApply} onClose={() => onOpenChange(false)} />}
       </DialogContent>
     </Dialog>
@@ -78,6 +79,11 @@ function SettingsBody({
             <Label htmlFor="sys-brief">Brief</Label>
             <Textarea id="sys-brief" rows={4} value={b} onChange={(e) => setB(e.target.value)} className="rounded-xl bg-surface-2" />
             <p className="text-xs text-subtle-foreground">Used as context when regenerating groups, and quoted in UI-CONFIG.md.</p>
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Visual style</p>
+            <StylePicker value={s.style} onChange={(v) => set("style", v)} distinctive={s.distinctive} onDistinctive={(v) => set("distinctive", v)} />
+            <p className="text-xs text-subtle-foreground">Steers Regenerate, component specs and UI-CONFIG.md. Existing tokens don&apos;t change until you regenerate them.</p>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-4">
             <div className="space-y-2">

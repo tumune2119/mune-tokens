@@ -34,13 +34,14 @@ Rules:
 - Order: foundations, primitives, composites, product.`;
 }
 
-export function inventoryUserMessage(idea: string, brief: string, set: TokenSet, attached: BriefFile[]) {
+/** `direction` is the visual-style and AI-tell block from directionBlock(settings, "all"). */
+export function inventoryUserMessage(idea: string, brief: string, set: TokenSet, attached: BriefFile[], direction = "") {
   return `Product idea:
 ${idea.trim()}
 
 Design system brief: ${brief.trim() || "(none)"}
 Available tokens (for context):
-${tokenSummary(set)}${files(attached)}`;
+${tokenSummary(set)}${direction}${files(attached)}`;
 }
 
 const SPEC_SHAPE = `{
@@ -93,6 +94,8 @@ export function specUserMessage(opts: {
   set: TokenSet;
   /** Optional guidance from the designer; it takes priority over the suggestions above it. */
   notes?: string;
+  /** Visual style and AI-tell rules (directionBlock). */
+  direction?: string;
 }) {
   return `Write the spec for "${opts.name}" (${opts.level}).
 Why it's needed: ${opts.reason || "(not given)"}
@@ -106,10 +109,10 @@ Designer's notes (follow these; they override the suggestions above):
 ${opts.notes.trim()}
 ` : ""}
 Tokens you may use:
-${tokenSummary(opts.set)}`;
+${tokenSummary(opts.set)}${opts.direction ?? ""}`;
 }
 
-export function reviseUserMessage(spec: ComponentSpec, instruction: string, set: TokenSet) {
+export function reviseUserMessage(spec: ComponentSpec, instruction: string, set: TokenSet, direction = "") {
   return `Revise this component spec: ${instruction.trim()}
 Return the complete revised spec.
 
@@ -117,5 +120,5 @@ Current spec:
 ${JSON.stringify(spec)}
 
 Tokens you may use:
-${tokenSummary(set)}`;
+${tokenSummary(set)}${direction}`;
 }

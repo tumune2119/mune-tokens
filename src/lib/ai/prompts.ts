@@ -1,5 +1,6 @@
 import { GROUP_LABELS, STEP_SETS, type GroupKey, type Scope, type SystemSettings, type TokenSet } from "../tokens/schema";
 import type { BriefFile } from "../types";
+import { directionBlock } from "../styles";
 
 const SHAPES: Record<string, string> = {
   ramps: `"ramps": [{ "name": "brand", "base": "#0d9488" }]
@@ -39,7 +40,7 @@ const RULES = `Rules:
 - Lower-case names; letters, digits and dashes; "/" separates path segments.
 - Text colours must meet the contrast target on the background named in "on" in every mode.
 - Dark-mode values are designed, not inverted: dark surfaces around step 900–950, text around 50–200, brand slightly lighter (400–500).
-- Keep it practical for a real product team; no novelty values.`;
+- Keep it practical for a real product team. When a visual style is given, commit to it fully (its palette, fonts, radii and shadows) within these rules.`;
 
 export function systemPromptFor(groups: string[]): string {
   return `You are a senior design-systems designer. You produce design tokens as JSON for a design-system tool.
@@ -77,7 +78,7 @@ export function generationUserMessage(brief: string, settings: SystemSettings, f
 
 ${brief.trim()}
 
-${settingsLines(settings).join("\n")}${filesBlock(files)}`;
+${settingsLines(settings).join("\n")}${directionBlock(settings, "tokens")}${filesBlock(files)}`;
 }
 
 /** Compact view of the current tokens so the model can stay consistent. */
@@ -122,7 +123,7 @@ export function regenerateUserMessage(opts: { group: GroupKey; set: TokenSet; se
 
 Brief: ${opts.brief.trim() || "(none)"}
 Guidance: ${opts.guidance.trim() || "Improve it while keeping the same direction."}
-${settingsLines(settings).join("\n")}${keep}
+${settingsLines(settings).join("\n")}${keep}${directionBlock(settings, "tokens")}
 
 Current tokens:
 ${contextOf(set, group)}`;

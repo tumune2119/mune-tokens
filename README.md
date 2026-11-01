@@ -57,6 +57,12 @@ Each component renders as a full variant × state grid built only from token val
 
 Each save rewrites the project folder with `UI-CONFIG.md`, `tokens.json` (W3C DTCG), `tokens.css`, `tailwind.css` (Tailwind v4) and `export\*.html`. The previous `UI-CONFIG.md` is kept in `.history\`. If you edit `UI-CONFIG.md` by hand, the app notices and asks whether to **keep your edits** (read back in as a new version) or **overwrite** the file.
 
+## Visual styles
+
+New system (and System settings) has a **Visual style** picker with 30 styles, from Minimalism and Swiss Design to Neo-Brutalism, Claymorphism, Y2K, Pixel Art, Aurora and Wabi-Sabi. Pick one, or two to blend (the first is the base). Each style carries concrete rules for colour, type (Google Fonts), radius, shadows, spacing, motion and components. Claude follows them when it generates or regenerates tokens and writes component specs, and UI-CONFIG.md passes them on to whoever builds the app. The library lives in `src/lib/styles.ts`.
+
+**Avoid the generic AI look** (on by default) steers away from the common tells of AI-made UI: Inter/Geist/Space Grotesk, purple-on-black, glow orbs, sparkle icons and emojis, three identical feature cards, fake testimonials, em-dash copy and so on. A style you pick on purpose wins where they overlap.
+
 ## Build in Figma
 
 Give the system a **Project name** when you create it (or rename it in the editor header). That name is used everywhere: the Figma file, its cover, the project folder and the exports.

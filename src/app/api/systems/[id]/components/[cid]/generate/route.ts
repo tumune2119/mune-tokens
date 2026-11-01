@@ -1,4 +1,5 @@
 import { streamAiJob } from "@/lib/ai/ndjson";
+import { directionBlock } from "@/lib/styles";
 import { generateStructured } from "@/lib/ai/generate";
 import { specSystemPrompt, specUserMessage } from "@/lib/components/prompts";
 import { specSchemaFor, type ComponentSpec } from "@/lib/components/schema";
@@ -23,7 +24,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/systems/[id
   return streamAiJob(request, async ({ provider, signal, onText, onRetry }) => {
     const { data, usage } = await generateStructured({
       system: specSystemPrompt(),
-      user: specUserMessage({ name: comp.name, level: comp.level, reason: comp.reason, plan: comp.plan, idea, set: rec.tokens, notes }),
+      user: specUserMessage({ name: comp.name, level: comp.level, reason: comp.reason, plan: comp.plan, idea, set: rec.tokens, notes, direction: directionBlock(rec.settings, "all") }),
       schema: specSchemaFor(rec.tokens) as unknown as z.ZodType<ComponentSpec>,
       track: { kind: "component", systemId: id, systemName: rec.name },
       provider,

@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/kbd";
+import { StylePicker } from "@/components/style-picker";
 import { Segmented } from "@/components/system-browser";
 import { SystemEditor, type EditorInitial } from "@/components/editor/system-editor";
 import { LivePreview } from "@/components/new-system/live-preview";
@@ -172,10 +173,21 @@ export function NewSystem({ defaults }: { defaults: SystemSettings }) {
               }}
               disabled={busy}
               rows={7}
-              placeholder={"Fintech app for freelancers. Calm, trustworthy, a little warm.\nBrand colour teal (#0d9488). Inter for UI. Needs AA contrast."}
+              placeholder={"Fintech app for freelancers. Calm, trustworthy, a little warm.\nBrand colour teal (#0d9488). Figtree for UI. Needs AA contrast."}
               className="resize-y rounded-xl bg-surface-2"
             />
             <p className="text-xs text-subtle-foreground">Product, audience, mood, brand colours, fonts, accessibility needs.</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Visual style</Label>
+            <StylePicker
+              value={settings.style}
+              onChange={(v) => set("style", v)}
+              distinctive={settings.distinctive}
+              onDistinctive={(v) => set("distinctive", v)}
+              disabled={busy}
+            />
           </div>
 
           <div className="space-y-2">

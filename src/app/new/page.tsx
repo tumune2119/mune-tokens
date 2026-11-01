@@ -14,6 +14,8 @@ export default function NewSystemPage() {
     scope: [...SCOPES],
     uiConfig: "tokens+rules",
     figmaUrl: "",
+    style: [],
+    distinctive: true,
   };
   return <NewSystem defaults={defaults} />;
 }

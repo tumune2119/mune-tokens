@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { streamAiJob } from "@/lib/ai/ndjson";
+import { directionBlock } from "@/lib/styles";
 import { generateStructured } from "@/lib/ai/generate";
 import { estimateCostUsd } from "@/lib/ai/pricing";
 import { inventorySystemPrompt, inventoryUserMessage } from "@/lib/components/prompts";
@@ -31,7 +32,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/systems/[id
   return streamAiJob(request, async ({ provider, signal, onText, onRetry }) => {
     const { data, usage } = await generateStructured({
       system: inventorySystemPrompt(),
-      user: inventoryUserMessage(idea, rec.brief, rec.tokens, files) + mediaNote(media, "product"),
+      user: inventoryUserMessage(idea, rec.brief, rec.tokens, files, directionBlock(rec.settings, "all")) + mediaNote(media, "product"),
       media,
       schema: InventorySchema,
       track: { kind: "inventory", systemId: id, systemName: rec.name },

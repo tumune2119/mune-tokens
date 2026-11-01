@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { streamAiJob } from "@/lib/ai/ndjson";
+import { directionBlock } from "@/lib/styles";
 import { generateStructured } from "@/lib/ai/generate";
 import { reviseUserMessage, specSystemPrompt } from "@/lib/components/prompts";
 import { specSchemaFor, type ComponentSpec } from "@/lib/components/schema";
@@ -21,7 +22,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/systems/[id
   return streamAiJob(request, ({ provider, signal, onText, onRetry }) =>
     generateStructured({
       system: specSystemPrompt(),
-      user: reviseUserMessage(spec, parsed.data.instruction, rec.tokens),
+      user: reviseUserMessage(spec, parsed.data.instruction, rec.tokens, directionBlock(rec.settings, "all")),
       schema: specSchemaFor(rec.tokens) as unknown as z.ZodType<ComponentSpec>,
       track: { kind: "revise", systemId: id, systemName: rec.name },
       provider,

@@ -138,6 +138,10 @@ export const SystemSettingsSchema = z.object({
   /** What UI-CONFIG.md includes. */
   uiConfig: z.enum(["tokens", "tokens+rules"]).default("tokens+rules"),
   figmaUrl: z.string().trim().max(500).default(""),
+  /** Visual styles from the style library (src/lib/styles.ts); the first is the base. */
+  style: z.array(z.string().max(40)).max(2).default([]),
+  /** Steer away from the common tells of AI-made UI. */
+  distinctive: z.boolean().default(true),
 });
 
 export type Ramp = z.infer<typeof RampSchema>;
